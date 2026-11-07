@@ -1,0 +1,14 @@
+/build/
+/vcpkg_installed/
+CMakeUserPresets.json
+/.cache/
+.vs/
+*.swp
+*.swo
+.DS_Store
+
+
+src/main.cpp
+README.md
+docs
+CMakePresets.json
