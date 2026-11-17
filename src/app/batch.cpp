@@ -400,4 +400,29 @@ void BatchEngine::wait() {
     if (impl_->coordinator.joinable()) impl_->coordinator.join();
 }
 
+BatchSnapshot BatchEngine::snapshot() const {
+    std::lock_guard lock(impl_->mutex);
+    BatchSnapshot result;
+    result.phase = impl_->phase; result.workers = impl_->workers;
+    result.warnings = impl_->warnings; result.log_path = impl_->log_path;
+    result.counts = counts_for(impl_->queue.jobs(), impl_->excluded);
+    const auto now = Clock::now();
+    for (const auto& job : impl_->queue.jobs()) {
+        const auto& row = impl_->rows.at(job.id());
+        JobSnapshot item{job, row.diagnostic, row.warnings, std::nullopt, row.started.has_value(), 0, std::nullopt};
+        if (row.inspection) item.media = row.inspection->media;
+        if (row.started) {
+            item.elapsed_seconds = std::chrono::duration<double>(row.finished.value_or(now) - *row.started).count();
+            if (job.state() == JobState::Completed) item.eta_seconds = 0;
+            else if (job.state() == JobState::Converting && job.progress() && *job.progress() > 0 &&
+                     item.elapsed_seconds >= 0.05) {
+                const auto seconds = item.elapsed_seconds * (1.0 - *job.progress()) / *job.progress();
+                if (std::isfinite(seconds)) item.eta_seconds = seconds;
+            }
+        }
+        result.jobs.push_back(std::move(item));
+    }
+    return result;
+}
+
 } // namespace audio_converter
