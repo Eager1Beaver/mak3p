@@ -170,4 +170,11 @@ std::string serialize_settings(const AppSettings& settings) {
     return out.str();
 }
 
+SettingsResult read_settings(const fs::path& path) {
+    try { return parse_settings(read_ini(path), fs::absolute(path).parent_path()); }
+    catch (const std::exception& error) {
+        return {{}, {{"settings_read_failed", {}, error.what()}}};
+    }
+}
+
 } // namespace audio_converter
