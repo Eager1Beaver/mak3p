@@ -32,6 +32,18 @@ void validate(const ProcessRequest& request) {
     }
 }
 
+struct Descriptor {
+    int value = -1;
+    Descriptor() = default;
+    explicit Descriptor(int input) : value(input) {}
+    ~Descriptor() { close(); }
+    void close() noexcept {
+        if (value >= 0) ::close(value);
+        value = -1;
+    }
+    Descriptor(const Descriptor&) = delete;
+    Descriptor& operator=(const Descriptor&) = delete;
+};
 
 
 } // namespace audio_converter
