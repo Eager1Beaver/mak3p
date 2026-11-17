@@ -316,4 +316,23 @@ struct BatchEngine::Impl {
         phase = BatchPhase::Idle;
     }
 
+    void launch(bool convert) {
+        std::lock_guard lifecycle_lock(lifecycle);
+        {
+            std::lock_guard lock(mutex);
+            require_idle();
+        }
+        if (coordinator.joinable()) coordinator.join();
+        std::lock_guard lock(mutex);
+        for (const auto& entry : queue.jobs()) {
+            queue.job(entry.id()).reset();
+            rows.at(entry.id()) = Row{};
+        }
+        warnings.clear(); log_path.reset(); excluded = 0; workers = 0;
+        stop = std::stop_source{};
+        phase = BatchPhase::Inspecting;
+        try { coordinator = std::jthread([this, convert] { run(convert); }); }
+        catch (...) { phase = BatchPhase::Idle; throw; }
+    }
+
 } // namespace audio_converter
