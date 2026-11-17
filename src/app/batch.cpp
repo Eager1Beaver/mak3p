@@ -385,4 +385,19 @@ void BatchEngine::configure(AppSettings settings) {
     }
 }
 
+AppSettings BatchEngine::settings() const {
+    std::lock_guard lock(impl_->mutex); return impl_->settings;
+}
+void BatchEngine::inspect_async() { impl_->launch(false); }
+void BatchEngine::start_async() { impl_->launch(true); }
+void BatchEngine::cancel() {
+    std::stop_source source;
+    { std::lock_guard lock(impl_->mutex); source = impl_->stop; }
+    source.request_stop();
+}
+void BatchEngine::wait() {
+    std::lock_guard lock(impl_->lifecycle);
+    if (impl_->coordinator.joinable()) impl_->coordinator.join();
+}
+
 } // namespace audio_converter
