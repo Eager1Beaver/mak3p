@@ -334,5 +334,16 @@ struct BatchEngine::Impl {
         try { coordinator = std::jthread([this, convert] { run(convert); }); }
         catch (...) { phase = BatchPhase::Idle; throw; }
     }
+};
+
+BatchEngine::BatchEngine(BatchBackend backend, fs::path directory, std::string version)
+    : impl_(std::make_unique<Impl>()) {
+    if (!backend.inspect || !backend.convert) throw std::invalid_argument("Both audio operations are required");
+    impl_->backend = std::move(backend);
+    impl_->directory = fs::absolute(directory).lexically_normal();
+    impl_->version = std::move(version);
+}
+
+BatchEngine::~BatchEngine() { cancel(); wait(); }
 
 } // namespace audio_converter
