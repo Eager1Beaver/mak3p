@@ -66,6 +66,17 @@ bool format_is_mp3(const MediaInfo& media) {
            ("," + media.format + ",").find(",mp3,") != std::string::npos;
 }
 
+ProcessRequest decode_request(const fs::path& executable, const fs::path& source, int stream) {
+    ProcessRequest request;
+    request.executable = executable;
+    request.arguments = {
+        "-nostdin", "-hide_banner", "-v", "error", "-xerror", "-threads", "1",
+        "-protocol_whitelist", "file,pipe", "-i", path_utf8(source),
+        "-map", "0:" + std::to_string(stream), "-vn", "-sn", "-dn", "-f", "null", "-"
+    };
+    return request;
+}
+
 void source_unchanged(const Inspection& input) {
     std::error_code size_error;
     const auto size = fs::file_size(input.source.path, size_error);
