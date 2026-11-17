@@ -357,5 +357,19 @@ QueueAddResult BatchEngine::add(const fs::path& path, ImportOrigin origin) {
     return result;
 }
 
+bool BatchEngine::remove(JobId id) {
+    std::lock_guard lock(impl_->mutex);
+    impl_->require_idle();
+    if (!impl_->queue.remove(id)) return false;
+    impl_->rows.erase(id);
+    return true;
+}
+
+void BatchEngine::clear() {
+    std::lock_guard lock(impl_->mutex);
+    impl_->require_idle();
+    impl_->queue.clear(); impl_->rows.clear(); impl_->excluded = 0;
+}
+
 
 } // namespace audio_converter
