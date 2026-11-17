@@ -22,6 +22,7 @@ enum class JobState {
     Checking,
     Ready,
     SameBitrateSkipped,
+    LowerBitrateSkipped,
     UnsupportedSkipped,
     Converting,
     Completed,
@@ -44,6 +45,7 @@ public:
 
     void mark_ready();
     void skip_same_bitrate(std::string reason);
+    void skip_lower_bitrate(std::string reason);
     void skip_unsupported(std::string reason);
     void start();
     void complete(fs::path output);
@@ -77,6 +79,7 @@ public:
     [[nodiscard]] QueueAddResult add(const fs::path& path, ImportOrigin origin);
     [[nodiscard]] std::span<const ConversionJob> jobs() const noexcept { return jobs_; }
     [[nodiscard]] ConversionJob& job(JobId id);
+    [[nodiscard]] bool remove(JobId id);
     void clear() noexcept;
 
 private:
