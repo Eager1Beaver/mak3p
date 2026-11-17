@@ -367,4 +367,88 @@ Inspection AudioProcessor::inspect(const SourceFile& source,
     return inspection;
 }
 
+ConversionResult AudioProcessor::convert(const Inspection& input, 
+                                         const AudioSettings& settings,
+                                         OutputTransaction& output, 
+                                         std::stop_token stop,
+                                         ProgressCallback progress) const {
+    validate_settings(settings);
+    ConversionResult result;
+    try {
+        if (input.state != JobState::Ready || !input.media) {
+            throw std::invalid_argument("Conversion requires a ready inspection");
+        }
+        if (input.settings != settings) throw AudioError({"settings_changed", {}, {}});
+        if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
+        source_unchanged(input);
+        output.validate_temporary();
+        auto fallback = input.media->tags;
+        for (const auto& [key, value] : input.media->audio.tags) fallback[key] = value;
+        const auto metadata = read_metadata(input.source.path, fallback, result.warnings);
+        source_unchanged(input);
+        if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
+        const auto channels = output_channels(input.media->audio.channels, settings.channel_mode);
+        const auto rate = output_sample_rate(input.media->audio.sample_rate);
+        ProgressReader reader(input.media->duration_seconds, progress);
+        if (progress) progress({input.media->duration_seconds ? std::optional<double>(0.0) :
+                                std::nullopt, 0us});
+        ProcessRequest encode{paths_.ffmpeg, {
+            "-nostdin", "-hide_banner", "-v", "error", "-xerror", "-threads", "1",
+            "-filter_threads", "1", "-protocol_whitelist", "file,pipe",
+            "-i", path_utf8(input.source.path), "-map", "0:" + std::to_string(input.media->audio.index),
+            "-vn", "-sn", "-dn", "-map_metadata", "-1", "-map_chapters", "-1",
+            "-c:a", "libmp3lame", "-b:a", std::to_string(settings.bitrate_kbps) + "k",
+            "-ac", std::to_string(channels), "-ar", std::to_string(rate), "-threads:a", "1",
+            "-id3v2_version", "3", "-write_id3v1", "0", "-progress", "pipe:1", "-nostats",
+            "-f", "mp3", "-y", path_utf8(output.temporary_path())
+        }};
+        encode.on_stdout = [&](std::string_view bytes) { reader.consume(bytes); };
+        output.validate_temporary();
+        const auto encoded = run_process(encode, stop);
+        checked(encoded, "encode_failed");
+        output.validate_temporary();
+        if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
+        write_metadata(output.temporary_path(), metadata, result.warnings);
+        output.validate_temporary();
+        const auto converted = probe(output.temporary_path(), false, stop);
+        if (converted.audio.codec != "mp3" || converted.audio.channels != channels ||
+            converted.audio.sample_rate != rate || converted.mp3.mode != Mp3BitrateMode::Cbr ||
+            converted.mp3.bitrate_kbps != settings.bitrate_kbps) {
+            throw AudioError({"output_invalid", {}, "Unexpected MP3 bitrate, channel count, or sample rate"});
+        }
+        auto decode = decode_request(paths_.ffmpeg, output.temporary_path(), converted.audio.index);
+        checked(run_process(decode, stop), "output_invalid");
+        if (input.media->duration_seconds && converted.duration_seconds) {
+            const double tolerance = std::max(0.15, std::min(1.0, *input.media->duration_seconds * 0.001));
+            if (std::abs(*converted.duration_seconds - *input.media->duration_seconds) > tolerance) {
+                throw AudioError({"output_invalid", {}, "Unexpected converted duration"});
+            }
+        }
+        source_unchanged(input);
+        if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
+        result.output = output.commit();
+        result.state = JobState::Completed;
+        result.diagnostic = {"completed", {}, {}};
+        if (progress) {
+            try {
+                progress({1.0, std::chrono::microseconds(static_cast<long long>(
+                    converted.duration_seconds.value_or(0) * 1'000'000))});
+            } catch (...) {
+                // The output is already committed; observer errors cannot undo publication.
+            }
+        }
+    } catch (const AudioError& error) {
+        result.diagnostic = error.diagnostic();
+        if (result.diagnostic.key == "process_cancelled") result.state = JobState::Cancelled;
+    } catch (const std::exception& error) {
+        result.diagnostic = {"conversion_failed", {}, error.what()};
+    }
+    try {
+        output.discard();
+    } catch (const std::exception& error) {
+        result.warnings.push_back({"cleanup_failed", {}, error.what()});
+    }
+    return result;
+}
+
 } // namespace audio_converter
