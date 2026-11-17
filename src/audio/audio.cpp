@@ -246,4 +246,82 @@ AudioProcessor::AudioProcessor(EnginePaths paths) : paths_(std::move(paths)) {
     }
 }
 
+MediaInfo AudioProcessor::probe(const fs::path& source, 
+                                bool check_decoding,
+                                std::stop_token stop) const {
+    ProcessRequest request{paths_.ffprobe, {
+        "-v", "error", "-protocol_whitelist", "file,pipe",
+        "-show_entries",
+        "stream=index,codec_type,codec_name,sample_rate,channels,channel_layout,duration:"
+        "stream_tags:format=format_name,duration:format_tags",
+        "-of", "json", "-i", path_utf8(source)
+    }, 30s};
+    request.output_limit = 16 * 1024 * 1024;
+    const auto result = run_process(request, stop);
+    checked(result, "unsupported");
+    if (result.stdout_truncated) throw AudioError({"probe_invalid", {}, {}});
+    Json document;
+    try {
+        document = Json::parse(result.standard_output);
+        if (!document.is_object() || !document.contains("streams") ||
+            !document.at("streams").is_array() || !document.contains("format") ||
+            !document.at("format").is_object()) {
+            throw AudioError({"probe_invalid", {}, {}});
+        }
+        MediaInfo media;
+        const auto& format = document.at("format");
+        media.format = format.value("format_name", std::string());
+        media.tags = tags(format);
+        const auto format_duration = duration(format);
+        std::string errors;
+        for (const auto& entry : document.at("streams")) {
+            if (entry.value("codec_type", std::string()) != "audio") continue;
+            AudioStream audio;
+            audio.index = entry.value("index", -1);
+            audio.codec = entry.value("codec_name", std::string());
+            audio.sample_rate = number<int>(entry.value("sample_rate", std::string())).value_or(0);
+            audio.channels = entry.value("channels", 0);
+            audio.channel_layout = entry.value("channel_layout", std::string());
+            audio.duration_seconds = duration(entry);
+            audio.tags = tags(entry);
+            if (audio.index < 0 || audio.codec.empty() || audio.codec == "unknown" ||
+                audio.sample_rate < 1 || audio.channels < 1) continue;
+            if (check_decoding) {
+                auto decode = decode_request(paths_.ffmpeg, source, audio.index);
+                decode.arguments[decode.arguments.size() - 2] = "framehash";
+                const auto end = decode.arguments.end() - 3;
+                decode.arguments.insert(end, {"-frames:a", "2"});
+                decode.timeout = 30s;
+                const auto decoded = run_process(decode, stop);
+                if (decoded.cancelled || decoded.timed_out) checked(decoded, "decode_failed");
+                bool produced = false;
+                std::istringstream frames(decoded.standard_output);
+                for (std::string line; std::getline(frames, line);) {
+                    if (line.starts_with("0,")) produced = true;
+                }
+                if (decoded.exit_code != 0 || !produced) {
+                    errors += process_detail(decoded);
+                    continue;
+                }
+            }
+            media.audio = std::move(audio);
+            media.duration_seconds = media.audio.duration_seconds ?
+                media.audio.duration_seconds : format_duration;
+            if (format_is_mp3(media)) {
+                media.mp3 = scan_mp3(source, stop, check_decoding ?
+                                     Mp3Scan::BoundedInput : Mp3Scan::CompleteOutput);
+                if (media.mp3.duration_seconds) {
+                    media.duration_seconds = media.mp3.duration_seconds;
+                } else {
+                    media.duration_seconds.reset();
+                }
+            }
+            return media;
+        }
+        throw AudioError({"no_audio", {}, errors});
+    } catch (const Json::exception& error) {
+        throw AudioError({"probe_invalid", {}, error.what()});
+    }
+}
+
 } // namespace audio_converter
