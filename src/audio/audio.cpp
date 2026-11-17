@@ -28,7 +28,18 @@ void checked(const ProcessResult& result, const std::string& failure) {
     if (result.cancelled) throw AudioError({"process_cancelled", {}, process_detail(result)});
     if (result.timed_out) throw AudioError({"process_timeout", {}, process_detail(result)});
     if (result.exit_code != 0) throw AudioError({failure, {}, process_detail(result)});
-}    
+}
+
+template<class Number>
+std::optional<Number> number(const std::string& text) {
+    Number value{};
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (error != std::errc{} || end != text.data() + text.size()) return std::nullopt;
+    if constexpr (std::is_floating_point_v<Number>) {
+        if (!std::isfinite(value)) return std::nullopt;
+    }
+    return value;
+}
 
 bool format_is_mp3(const MediaInfo& media) {
     return media.audio.codec == "mp3" &&
