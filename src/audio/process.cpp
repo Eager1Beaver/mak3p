@@ -285,7 +285,105 @@ ProcessResult run_process(const ProcessRequest& request, std::stop_token stop) {
     Pipe output;
     Pipe error;
     const auto start = std::chrono::steady_clock::now();
-
+#ifdef _WIN32
+    SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+    Handle input(CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                             &security, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+    if (input.value == INVALID_HANDLE_VALUE) win_error("Cannot redirect standard input");
+    Handle job(CreateJobObjectW(nullptr, nullptr));
+    if (!job.value) win_error("Cannot create process job");
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(job.value, JobObjectExtendedLimitInformation, &limits,
+                                 sizeof(limits))) win_error("Cannot configure process job");
+    std::array<HANDLE, 3> inherited{input.value, output.write.value, error.write.value};
+    Attributes attributes(inherited);
+    STARTUPINFOEXW startup{};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = input.value;
+    startup.StartupInfo.hStdOutput = output.write.value;
+    startup.StartupInfo.hStdError = error.write.value;
+    startup.lpAttributeList = attributes.list;
+    const auto native = windows_api_path(executable);
+    auto command = quote(native);
+    for (const auto& argument : request.arguments) command += L" " + quote(wide(argument));
+    if (command.size() >= 32767) throw std::length_error("Process command line is too long");
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(native.c_str(), command.data(), nullptr, nullptr, TRUE,
+        EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW | CREATE_SUSPENDED,
+        nullptr, nullptr, &startup.StartupInfo, &process)) win_error("Cannot start process");
+    Handle child(process.hProcess);
+    Handle thread(process.hThread);
+    RunningProcess supervise{job.value, child.value};
+    if (!AssignProcessToJobObject(job.value, child.value)) {
+        const auto failure = GetLastError();
+        TerminateProcess(child.value, 1);
+        WaitForSingleObject(child.value, INFINITE);
+        SetLastError(failure);
+        win_error("Cannot supervise process");
+    }
+    if (ResumeThread(thread.value) == static_cast<DWORD>(-1)) win_error("Cannot resume process");
+    thread.close();
+    input.close();
+    output.write.close();
+    error.write.close();
+    bool running = true;
+    auto exited = start;
+    const auto drain = [&](Handle& pipe, bool standard_output) {
+        std::array<char, 16384> buffer;
+        for (int chunk = 0; chunk < 64 && pipe.value != INVALID_HANDLE_VALUE; ++chunk) {
+            DWORD available = 0;
+            if (!PeekNamedPipe(pipe.value, nullptr, 0, nullptr, &available, nullptr)) {
+                if (GetLastError() == ERROR_BROKEN_PIPE) { pipe.close(); break; }
+                win_error("Cannot inspect process output");
+            }
+            if (available == 0) break;
+            DWORD count = 0;
+            if (!ReadFile(pipe.value, buffer.data(),
+                          std::min<DWORD>(available, static_cast<DWORD>(buffer.size())),
+                          &count, nullptr)) win_error("Cannot read process output");
+            const std::string_view bytes(buffer.data(), count);
+            if (standard_output) {
+                capture(result.standard_output, result.stdout_truncated, bytes, request.output_limit);
+                if (request.on_stdout) request.on_stdout(bytes);
+            } else {
+                capture(result.standard_error, result.stderr_truncated, bytes, request.output_limit);
+            }
+        }
+    };
+    while (running || output.read.value != INVALID_HANDLE_VALUE ||
+           error.read.value != INVALID_HANDLE_VALUE) {
+        const auto now = std::chrono::steady_clock::now();
+        if (running && !result.cancelled && !result.timed_out && (stop.stop_requested() ||
+            (request.timeout.count() > 0 && now - start >= request.timeout))) {
+            result.cancelled = stop.stop_requested();
+            result.timed_out = !result.cancelled;
+            if (!TerminateJobObject(job.value, 1)) win_error("Cannot stop process");
+        }
+        drain(output.read, true);
+        drain(error.read, false);
+        if (running) {
+            const auto status = WaitForSingleObject(child.value, 0);
+            if (status == WAIT_FAILED) win_error("Cannot wait for process");
+            if (status == WAIT_OBJECT_0) {
+                DWORD code = 0;
+                if (!GetExitCodeProcess(child.value, &code)) win_error("Cannot read process status");
+                result.exit_code = static_cast<int>(code);
+                running = false;
+                exited = now;
+                TerminateJobObject(job.value, 1);
+            }
+        } else if (now - exited > std::chrono::milliseconds(250)) {
+            output.read.close();
+            error.read.close();
+        }
+        if (running || output.read.value != INVALID_HANDLE_VALUE ||
+            error.read.value != INVALID_HANDLE_VALUE) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+#else
 Descriptor input(::open("/dev/null", O_RDONLY | O_CLOEXEC));
     if (input.value < 0) posix_check(errno, "Cannot redirect standard input");
     SpawnActions actions;
