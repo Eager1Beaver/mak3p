@@ -108,4 +108,37 @@ bool writable_existing_file(const fs::path& path) {
     return regular;
 }
 
+
+std::string safe_log_text(std::string_view text, std::size_t limit) {
+    std::string result;
+    const auto size = std::min(text.size(), limit);
+    for (std::size_t index = 0; index < size;) {
+        const auto first = static_cast<unsigned char>(text[index]);
+        if (first < 0x20 || first == 0x7f) {
+            constexpr char hex[] = "0123456789abcdef";
+            result += "\\x";
+            result += hex[first >> 4]; result += hex[first & 15]; ++index;
+            continue;
+        }
+        if (first < 0x80) { result += text[index++]; continue; }
+        const std::size_t count = first >= 0xc2 && first <= 0xdf ? 2 :
+                                  first >= 0xe0 && first <= 0xef ? 3 :
+                                  first >= 0xf0 && first <= 0xf4 ? 4 : 0;
+        bool valid = count != 0 && index + count <= size;
+        for (std::size_t next = 1; valid && next < count; ++next) {
+            const auto byte = static_cast<unsigned char>(text[index + next]);
+            valid = byte >= 0x80 && byte <= 0xbf;
+        }
+        if (valid) {
+            const auto second = static_cast<unsigned char>(text[index + 1]);
+            valid = !(first == 0xe0 && second < 0xa0) && !(first == 0xed && second >= 0xa0) &&
+                    !(first == 0xf0 && second < 0x90) && !(first == 0xf4 && second >= 0x90);
+        }
+        if (valid) { result.append(text.substr(index, count)); index += count; }
+        else { result += "\xef\xbf\xbd"; ++index; }
+    }
+    if (text.size() > size) result += " [truncated]";
+    return result;
+}
+
 } // namespace audio_converter::detail
