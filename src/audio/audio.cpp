@@ -114,6 +114,43 @@ private:
     std::string pending_;
 };
 
+} // namespace
+
+void validate_settings(const AudioSettings& settings) {
+    constexpr std::array rates{128, 160, 192, 224, 256, 320};
+    if (std::find(rates.begin(), rates.end(), settings.bitrate_kbps) == rates.end()) {
+        throw AudioError({"invalid_bitrate", {}, {}});
+    }
+    if (settings.channel_mode != ChannelMode::Auto &&
+        settings.channel_mode != ChannelMode::Stereo && settings.channel_mode != ChannelMode::Mono) {
+        throw AudioError({"invalid_channels", {}, {}});
+    }
+}
+
+int output_channels(int source_channels, ChannelMode mode) {
+    if (source_channels < 1) throw std::invalid_argument("Source channel count must be positive");
+    switch (mode) {
+    case ChannelMode::Auto: return source_channels == 1 ? 1 : 2;
+    case ChannelMode::Stereo: return 2;
+    case ChannelMode::Mono: return 1;
+    }
+    throw AudioError({"invalid_channels", {}, {}});
+}
+
+int output_sample_rate(int source_rate) {
+    if (source_rate < 1) throw std::invalid_argument("Source sample rate must be positive");
+    const auto family = [&](int base) {
+        const int larger = std::max(base, source_rate);
+        const int smaller = std::min(base, source_rate);
+        if (larger % smaller != 0) return false;
+        const int ratio = larger / smaller;
+        return (ratio & (ratio - 1)) == 0;
+    };
+    if (family(11025)) return 44100;
+    if (family(8000) || family(12000)) {
+        return 48000;
+    }
+    return std::abs(source_rate - 44100) < std::abs(source_rate - 48000) ? 44100 : 48000;
 }
 
 } // namespace audio_converter
