@@ -50,6 +50,16 @@ std::optional<double> duration(const Json& object) {
     return parsed && std::isfinite(*parsed) && *parsed > 0 ? parsed : std::nullopt;
 }
 
+MediaTags tags(const Json& object) {
+    MediaTags result;
+    if (object.contains("tags") && object.at("tags").is_object()) {
+        for (const auto& [key, value] : object.at("tags").items()) {
+            if (value.is_string()) result[key] = value.get<std::string>();
+        }
+    }
+    return result;
+}
+
 bool format_is_mp3(const MediaInfo& media) {
     return media.audio.codec == "mp3" &&
            ("," + media.format + ",").find(",mp3,") != std::string::npos;
