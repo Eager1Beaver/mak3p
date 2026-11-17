@@ -214,4 +214,36 @@ Mp3Analysis analyze_mp3(const fs::path& source, std::stop_token stop) {
     return scan_mp3(source, stop, Mp3Scan::BoundedInput);
 }
 
+AudioProcessor::AudioProcessor(EnginePaths paths) : paths_(std::move(paths)) {
+    try {
+        paths_.ffmpeg = resolve_executable(paths_.ffmpeg);
+        paths_.ffprobe = resolve_executable(paths_.ffprobe);
+        auto ffmpeg = run_process({paths_.ffmpeg, {"-version"}, 10s});
+        auto ffprobe = run_process({paths_.ffprobe, {"-version"}, 10s});
+        checked(ffmpeg, "engine_probe_failed");
+        checked(ffprobe, "engine_probe_failed");
+        if (!ffmpeg.standard_output.starts_with("ffmpeg version ") ||
+            !ffprobe.standard_output.starts_with("ffprobe version ")) {
+            throw AudioError({"engine_probe_failed", {}, {}});
+        }
+        ffmpeg_version_ = ffmpeg.standard_output.substr(0, ffmpeg.standard_output.find('\n'));
+        ffprobe_version_ = ffprobe.standard_output.substr(0, ffprobe.standard_output.find('\n'));
+        auto encoders = run_process({paths_.ffmpeg, {"-hide_banner", "-encoders"}, 10s});
+        checked(encoders, "engine_probe_failed");
+        bool lame = false;
+        std::istringstream lines(encoders.standard_output);
+        for (std::string line; std::getline(lines, line);) {
+            std::istringstream fields(line);
+            std::string flags, name;
+            fields >> flags >> name;
+            if (name == "libmp3lame" && flags.starts_with('A')) lame = true;
+        }
+        if (!lame || encoders.stdout_truncated) throw AudioError({"missing_encoder", {}, {}});
+    } catch (const AudioError&) {
+        throw;
+    } catch (const std::exception& error) {
+        throw AudioError({"engine_missing", {}, error.what()});
+    }
+}
+
 } // namespace audio_converter
