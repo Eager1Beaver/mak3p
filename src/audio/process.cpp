@@ -216,6 +216,8 @@ struct Child {
     }
 };
 
+#endif
+
 } // Pipe
 
 std::string path_utf8(const fs::path& path) {
@@ -228,6 +230,49 @@ fs::path resolve_executable(const fs::path& executable) {
         executable.native().find(fs::path::value_type{}) != fs::path::string_type::npos) {
         throw std::invalid_argument("Executable path is invalid");
     }
+#ifdef _WIN32
+    if (executable.has_parent_path()) {
+        const auto path = fs::canonical(executable);
+        if (!fs::is_regular_file(path)) throw std::invalid_argument("Executable is not a file");
+        return path;
+    }
+    std::wstring buffer(32768, L'\0');
+    const DWORD length = SearchPathW(nullptr, 
+                                     executable.c_str(), 
+                                     L".exe",
+                                     static_cast<DWORD>(buffer.size()), 
+                                     buffer.data(), 
+                                     nullptr);
+    if (length == 0 || length >= buffer.size()) win_error("Cannot find executable");
+    buffer.resize(length);
+    return fs::canonical(buffer);
+#else
+    if (executable.has_parent_path()) {
+        const auto path = fs::canonical(executable);
+        if (!fs::is_regular_file(path) || ::access(path.c_str(), X_OK) != 0) {
+            throw fs::filesystem_error("Executable is not runnable", path,
+                                       std::make_error_code(std::errc::permission_denied));
+        }
+        return path;
+    }
+    const char* environment = std::getenv("PATH");
+    const std::string search = environment ? environment : "/usr/bin:/bin";
+    std::size_t offset = 0;
+    while (offset <= search.size()) {
+        const auto separator = search.find(':', offset);
+        const auto component = search.substr(offset, separator - offset);
+        const auto path = fs::path(component.empty() ? "." : component) / executable;
+        std::error_code error;
+        if (fs::is_regular_file(path, error) && ::access(path.c_str(), X_OK) == 0) {
+            return fs::canonical(path);
+        }
+        if (separator == std::string::npos) break;
+        offset = separator + 1;
+    }
+    throw fs::filesystem_error("Cannot find executable", executable,
+                               std::make_error_code(std::errc::no_such_file_or_directory));
+#endif
+}    
 
 ProcessResult run_process(const ProcessRequest& request, std::stop_token stop) {
     validate(request);
