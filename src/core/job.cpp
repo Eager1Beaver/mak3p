@@ -49,6 +49,13 @@ void ConversionJob::skip_unsupported(std::string reason) {
     state_ = JobState::UnsupportedSkipped;
 }
 
+void ConversionJob::skip_lower_bitrate(std::string reason) {
+    require_state(JobState::Checking);
+    require_reason(reason);
+    detail_ = std::move(reason);
+    state_ = JobState::LowerBitrateSkipped;
+}
+
 void ConversionJob::start() {
     require_state(JobState::Ready);
     state_ = JobState::Converting;
@@ -133,6 +140,23 @@ ConversionJob& FileQueue::job(JobId id) {
 void FileQueue::clear() noexcept {
     indices_.clear();
     jobs_.clear();
+}
+
+bool FileQueue::remove(JobId id) {
+    for (std::size_t index = 0; index < jobs_.size(); ++index) {
+        if (jobs_[index].id() != id) continue;
+        if (jobs_[index].state() == JobState::Converting) {
+            throw std::logic_error("A running job cannot be removed");
+        }
+        indices_.erase(jobs_[index].source().path);
+        jobs_.erase(jobs_.begin() + static_cast<std::ptrdiff_t>(index));
+        for (auto& [path, position] : indices_) {
+            (void)path;
+            if (position > index) --position;
+        }
+        return true;
+    }
+    return false;
 }
 
 } // namespace audio_converter
