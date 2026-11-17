@@ -7,6 +7,7 @@
 
 namespace audio_converter {
 namespace {
+using Clock = std::chrono::steady_clock;
 
 BatchCounts counts_for(std::span<const ConversionJob> jobs, std::size_t excluded) {
     BatchCounts counts;
