@@ -9,6 +9,22 @@
 #include <thread>
 #include <utility>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
+#endif
+
 namespace audio_converter {
 namespace {
 
