@@ -77,6 +77,29 @@ struct Pipe {
     }
 };
 
+struct SpawnActions {
+    posix_spawn_file_actions_t value{};
+    SpawnActions() { posix_check(posix_spawn_file_actions_init(&value), "Cannot initialize spawn"); }
+    ~SpawnActions() { posix_spawn_file_actions_destroy(&value); }
+};
+
+struct SpawnAttributes {
+    posix_spawnattr_t value{};
+    SpawnAttributes() { posix_check(posix_spawnattr_init(&value), "Cannot initialize spawn"); }
+    ~SpawnAttributes() { posix_spawnattr_destroy(&value); }
+};
+
+struct Child {
+    pid_t pid = -1;
+    bool reaped = false;
+    ~Child() {
+        if (pid > 0 && !reaped) {
+            ::kill(-pid, SIGKILL);
+            while (::waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {}
+        }
+    }
+};
+
 } // namespace audio_converter
 
 }
