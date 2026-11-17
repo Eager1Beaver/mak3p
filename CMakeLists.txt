@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(PortableAudioToMP3 VERSION 0.1.0 LANGUAGES C CXX)
+project(Mak3P VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -62,6 +62,7 @@ if(AUDIO_CONVERTER_BUILD_AUDIO)
     audio_converter_warnings(audio_converter_batch)
 
     add_executable(audio_converter_cli src/cli/main.cpp)
+    set_target_properties(audio_converter_cli PROPERTIES OUTPUT_NAME "Mak3P-cli")
     target_link_libraries(audio_converter_cli PRIVATE audio_converter_batch)
     if(MINGW)
         target_link_options(audio_converter_cli PRIVATE -municode)
@@ -98,12 +99,12 @@ if(AUDIO_CONVERTER_BUILD_GUI)
     )
     FetchContent_MakeAvailable(fltk)
 
-    add_executable(portable_audio_to_mp3 WIN32 src/main.cpp)
-    target_link_libraries(portable_audio_to_mp3 PRIVATE
+    add_executable(Mak3P WIN32 src/main.cpp)
+    target_link_libraries(Mak3P PRIVATE
         audio_converter_core fltk::fltk TagLib::tag
     )
 
-    audio_converter_warnings(portable_audio_to_mp3)
+    audio_converter_warnings(Mak3P)
 endif()
 
 include(CTest)
