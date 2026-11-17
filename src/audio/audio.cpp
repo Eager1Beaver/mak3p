@@ -17,6 +17,19 @@
 namespace audio_converter {
 namespace {
 
+
+std::string process_detail(const ProcessResult& result) {
+    auto detail = result.standard_error;
+    if (result.stderr_truncated) detail += "\n[diagnostics truncated]";
+    return detail;
+}
+
+void checked(const ProcessResult& result, const std::string& failure) {
+    if (result.cancelled) throw AudioError({"process_cancelled", {}, process_detail(result)});
+    if (result.timed_out) throw AudioError({"process_timeout", {}, process_detail(result)});
+    if (result.exit_code != 0) throw AudioError({failure, {}, process_detail(result)});
+}    
+
 bool format_is_mp3(const MediaInfo& media) {
     return media.audio.codec == "mp3" &&
            ("," + media.format + ",").find(",mp3,") != std::string::npos;
