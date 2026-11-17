@@ -97,4 +97,43 @@ struct BatchEngine::Impl {
         } catch (const std::exception& error) { log_error(error, "log_create_failed"); }
     }
 
+    void inspect_one(JobId id) {
+        SourceFile source;
+        {
+            std::lock_guard lock(mutex);
+            source = queue.job(id).source();
+        }
+        Inspection input;
+        try { input = backend.inspect(source, settings.audio, stop.get_token()); }
+        catch (const std::exception& error) {
+            input.source = source;
+            input.settings = settings.audio;
+            input.diagnostic = {"unsupported", {}, error.what()};
+        }
+        std::optional<ConversionJob> event;
+        Row event_row;
+        {
+            std::lock_guard lock(mutex);
+            auto& job = queue.job(id);
+            auto& row = rows.at(id);
+            row.inspection = std::move(input);
+            auto& inspection = *row.inspection;
+            row.diagnostic = inspection.diagnostic;
+            row.warnings = inspection.warnings;
+            if (stop.stop_requested() || inspection.state == JobState::Cancelled) {
+                job.cancel(); row.diagnostic = {"cancelled", {}, {}};
+            } else if (inspection.state == JobState::Ready) job.mark_ready();
+            else if (inspection.state == JobState::SameBitrateSkipped) {
+                job.skip_same_bitrate(message(row.diagnostic));
+            } else if (inspection.state == JobState::LowerBitrateSkipped) {
+                job.skip_lower_bitrate(message(row.diagnostic));
+            } else job.skip_unsupported(message(row.diagnostic));
+            if (job.state() != JobState::Ready) { event = job; event_row = row; }
+            if (row.diagnostic.key == "mp3_excluded" && job.source().origin == ImportOrigin::FolderScan) {
+                (void)queue.remove(id); rows.erase(id); ++excluded;
+            }
+        }
+        if (event) emit(*event, event_row);
+    }
+
 } // namespace audio_converter
