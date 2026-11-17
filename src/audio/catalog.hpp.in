@@ -1,0 +1,7 @@
+#pragma once
+
+#include <string_view>
+
+namespace audio_converter {
+inline constexpr std::string_view default_catalog = R"audio_en_us(@AUDIO_CONVERTER_EN_US@)audio_en_us";
+}
