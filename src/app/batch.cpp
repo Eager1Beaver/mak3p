@@ -78,6 +78,14 @@ struct BatchEngine::Impl {
         warnings.push_back({key, {}, error.what()});
     }
 
+    void emit(const ConversionJob& job, const Row& row) {
+        std::lock_guard lock(log_mutex);
+        if (log) {
+            try { log->outcome(job, row.diagnostic, row.warnings); }
+            catch (const std::exception& error) { log_error(error, "log_write_failed"); }
+        }
+    }
+
     void create_log() {
         if (!settings.logging_enabled) return;
         // The queue cannot be mutated while this coordinator owns the run.
