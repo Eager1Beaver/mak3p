@@ -48,6 +48,106 @@ void validate(const ProcessRequest& request) {
     }
 }
 
+#ifdef _WIN32
+
+struct Handle {
+    HANDLE value = INVALID_HANDLE_VALUE;
+    Handle() = default;
+    explicit Handle(HANDLE input) : value(input) {}
+    ~Handle() { close(); }
+    void close() noexcept {
+        if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value);
+        value = INVALID_HANDLE_VALUE;
+    }
+    Handle(const Handle&) = delete;
+    Handle& operator=(const Handle&) = delete;
+};
+
+[[noreturn]] void win_error(const char* context) {
+    throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), context);
+}
+
+std::wstring wide(std::string_view utf8) {
+    if (utf8.empty()) return {};
+    const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(),
+                                          static_cast<int>(utf8.size()), nullptr, 0);
+    if (count == 0) win_error("Invalid UTF-8 process argument");
+    std::wstring result(static_cast<std::size_t>(count), L'\0');
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(),
+                            static_cast<int>(utf8.size()), result.data(), count)) {
+        win_error("Cannot convert process argument");
+    }
+    return result;
+}
+
+std::wstring quote(const std::wstring& argument) {
+    std::wstring result = L"\"";
+    std::size_t slashes = 0;
+    for (const auto character : argument) {
+        if (character == L'\\') {
+            ++slashes;
+            continue;
+        }
+        result.append(slashes * (character == L'"' ? 2 : 1), L'\\');
+        slashes = 0;
+        if (character == L'"') result += L'\\';
+        result += character;
+    }
+    result.append(slashes * 2, L'\\');
+    result += L'"';
+    return result;
+}
+
+struct Pipe {
+    Handle read;
+    Handle write;
+    Pipe() {
+        SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+        if (!CreatePipe(&read.value, &write.value, &security, 0)) win_error("Cannot create pipe");
+        if (!SetHandleInformation(read.value, HANDLE_FLAG_INHERIT, 0)) {
+            win_error("Cannot restrict pipe inheritance");
+        }
+    }
+};
+
+struct RunningProcess {
+    HANDLE job;
+    HANDLE process;
+    ~RunningProcess() {
+        if (WaitForSingleObject(process, 0) != WAIT_OBJECT_0) {
+            TerminateJobObject(job, 1);
+            TerminateProcess(process, 1);
+            WaitForSingleObject(process, INFINITE);
+        }
+    }
+};
+
+struct Attributes {
+    std::vector<unsigned char> storage;
+    LPPROC_THREAD_ATTRIBUTE_LIST list = nullptr;
+    explicit Attributes(std::array<HANDLE, 3>& handles) {
+        SIZE_T size = 0;
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+        storage.resize(size);
+        auto* candidate = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+        if (!InitializeProcThreadAttributeList(candidate, 1, 0, &size)) {
+            win_error("Cannot initialize process attributes");
+        }
+        list = candidate;
+        if (!UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                       handles.data(), sizeof(handles), nullptr, nullptr)) {
+            const auto error = GetLastError();
+            DeleteProcThreadAttributeList(list);
+            list = nullptr;
+            SetLastError(error);
+            win_error("Cannot restrict process inheritance");
+        }
+    }
+    ~Attributes() { if (list) DeleteProcThreadAttributeList(list); }
+};
+
+#else
+
 struct Descriptor {
     int value = -1;
     Descriptor() = default;
