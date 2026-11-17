@@ -157,4 +157,56 @@ struct BatchEngine::Impl {
         emit(*event, event_row);
     }
 
+    template<class Work>
+    void parallel(const std::vector<JobId>& ids, Work work) {
+        const auto count = worker_count(settings.workers, std::thread::hardware_concurrency(), ids.size());
+        {
+            std::lock_guard lock(mutex);
+            workers = count;
+        }
+        std::size_t next = 0;
+        std::mutex dispatch;
+        std::vector<std::jthread> pool;
+        pool.reserve(count);
+        try {
+            for (std::size_t index = 0; index < count; ++index) {
+                pool.emplace_back([&] {
+                    for (;;) {
+                        JobId id;
+                        {
+                            std::lock_guard lock(dispatch);
+                            if (stop.stop_requested() || next == ids.size()) return;
+                            id = ids[next++];
+                        }
+                        try { work(id); }
+                        catch (const std::exception& error) {
+                            // Unexpected backend/controller errors are contained in this file.
+                            std::optional<ConversionJob> event;
+                            Row event_row;
+                            {
+                                std::lock_guard lock(mutex);
+                                auto& job = queue.job(id);
+                                auto& row = rows.at(id);
+                                row.diagnostic = {"conversion_failed", {}, error.what()};
+                                if (job.state() == JobState::Checking) job.skip_unsupported(message(row.diagnostic));
+                                else if (job.state() == JobState::Ready) {
+                                    job.start(); job.fail(message(row.diagnostic));
+                                } else if (job.state() == JobState::Converting) job.fail(message(row.diagnostic));
+                                row.finished = Clock::now();
+                                event = job; event_row = row;
+                            }
+                            emit(*event, event_row);
+                        }
+                    }
+                });
+            }
+        } catch (...) {
+            stop.request_stop();
+            for (auto& worker : pool) worker.join();
+            throw;
+        }
+        // Join explicitly: jthread destruction requests its own unrelated stop token.
+        for (auto& worker : pool) worker.join();
+    }
+
 } // namespace audio_converter
