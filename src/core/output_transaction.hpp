@@ -24,6 +24,9 @@ public:
     [[nodiscard]] bool committed() const noexcept;
     [[nodiscard]] bool has_temporary_file() const noexcept;
 
+    // Checks ownership before a writer opens the temporary path.
+    void validate_temporary() const;
+
     // Requires a nonempty regular file. Retries name collisions without overwrite.
     [[nodiscard]] fs::path commit();
 

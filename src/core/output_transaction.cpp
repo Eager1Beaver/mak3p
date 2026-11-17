@@ -291,6 +291,12 @@ bool OutputTransaction::has_temporary_file() const noexcept {
     return impl_->owns_temporary;
 }
 
+void OutputTransaction::validate_temporary() const {
+    if (!impl_->owns_temporary || impl_->ownership(false) != Ownership::Owned) {
+        throw std::runtime_error("Temporary output is missing or no longer owned");
+    }
+}
+
 fs::path OutputTransaction::commit() {
     if (impl_->published) {
         return impl_->final;
