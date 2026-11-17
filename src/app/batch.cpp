@@ -136,4 +136,25 @@ struct BatchEngine::Impl {
         if (event) emit(*event, event_row);
     }
 
+    void finish_conversion(JobId id, ConversionResult result) {
+        std::optional<ConversionJob> event;
+        Row event_row;
+        {
+            std::lock_guard lock(mutex);
+            auto& job = queue.job(id);
+            auto& row = rows.at(id);
+            row.diagnostic = std::move(result.diagnostic);
+            row.warnings = std::move(result.warnings);
+            row.finished = Clock::now();
+            if (result.state == JobState::Completed && result.output) job.complete(*result.output);
+            else if (result.state == JobState::Cancelled) job.cancel();
+            else {
+                if (row.diagnostic.key.empty()) row.diagnostic = {"conversion_failed", {}, {}};
+                job.fail(message(row.diagnostic));
+            }
+            event = job; event_row = row;
+        }
+        emit(*event, event_row);
+    }
+
 } // namespace audio_converter
