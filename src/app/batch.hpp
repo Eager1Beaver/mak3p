@@ -44,6 +44,7 @@ struct JobSnapshot {
     bool progress_visible = false;
     double elapsed_seconds = 0;
     std::optional<double> eta_seconds;
+    std::optional<int> output_bitrate_kbps = std::nullopt;
 };
 
 struct BatchSnapshot {

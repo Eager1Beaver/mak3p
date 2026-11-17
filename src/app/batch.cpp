@@ -82,7 +82,8 @@ struct BatchEngine::Impl {
     void emit(const ConversionJob& job, const Row& row) {
         std::lock_guard lock(log_mutex);
         if (log) {
-            try { log->outcome(job, row.diagnostic, row.warnings); }
+            try { log->outcome(job, row.diagnostic, row.warnings,
+                               row.inspection ? row.inspection->output_bitrate_kbps : std::nullopt); }
             catch (const std::exception& error) { log_error(error, "log_write_failed"); }
         }
     }
@@ -411,7 +412,10 @@ BatchSnapshot BatchEngine::snapshot() const {
     for (const auto& job : impl_->queue.jobs()) {
         const auto& row = impl_->rows.at(job.id());
         JobSnapshot item{job, row.diagnostic, row.warnings, std::nullopt, row.started.has_value(), 0, std::nullopt};
-        if (row.inspection) item.media = row.inspection->media;
+        if (row.inspection) {
+            item.media = row.inspection->media;
+            item.output_bitrate_kbps = row.inspection->output_bitrate_kbps;
+        }
         if (row.started) {
             item.elapsed_seconds = std::chrono::duration<double>(row.finished.value_or(now) - *row.started).count();
             if (job.state() == JobState::Completed) item.eta_seconds = 0;
