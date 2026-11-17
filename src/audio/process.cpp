@@ -384,104 +384,104 @@ ProcessResult run_process(const ProcessRequest& request, std::stop_token stop) {
         }
     }
 #else
-Descriptor input(::open("/dev/null", O_RDONLY | O_CLOEXEC));
-    if (input.value < 0) posix_check(errno, "Cannot redirect standard input");
-    SpawnActions actions;
-    SpawnAttributes attributes;
-    for (const auto& pair : {std::pair{input.value, STDIN_FILENO},
-                            std::pair{output.write.value, STDOUT_FILENO},
-                            std::pair{error.write.value, STDERR_FILENO}}) {
-        posix_check(posix_spawn_file_actions_adddup2(&actions.value, pair.first, pair.second),
-                    "Cannot redirect process stream");
-    }
-    for (int descriptor : {output.read.value, output.write.value, error.read.value,
-                            error.write.value, input.value}) {
-        if (descriptor > STDERR_FILENO) {
-            posix_check(posix_spawn_file_actions_addclose(&actions.value, descriptor),
-                        "Cannot close inherited descriptor");
+    Descriptor input(::open("/dev/null", O_RDONLY | O_CLOEXEC));
+        if (input.value < 0) posix_check(errno, "Cannot redirect standard input");
+        SpawnActions actions;
+        SpawnAttributes attributes;
+        for (const auto& pair : {std::pair{input.value, STDIN_FILENO},
+                                std::pair{output.write.value, STDOUT_FILENO},
+                                std::pair{error.write.value, STDERR_FILENO}}) {
+            posix_check(posix_spawn_file_actions_adddup2(&actions.value, pair.first, pair.second),
+                        "Cannot redirect process stream");
         }
-    }
-    posix_check(posix_spawnattr_setpgroup(&attributes.value, 0), "Cannot set process group");
-    posix_check(posix_spawnattr_setflags(&attributes.value, POSIX_SPAWN_SETPGROUP),
-                "Cannot set spawn flags");
-    std::vector<std::string> storage{executable.native()};
-    storage.insert(storage.end(), request.arguments.begin(), request.arguments.end());
-    std::vector<char*> arguments;
-    for (auto& argument : storage) arguments.push_back(argument.data());
-    arguments.push_back(nullptr);
-    Child child;
-    posix_check(posix_spawn(&child.pid, executable.c_str(), &actions.value,
-                            &attributes.value, arguments.data(), environ), "Cannot start process");
-    input.close();
-    output.write.close();
-    error.write.close();
-    for (int descriptor : {output.read.value, error.read.value}) {
-        const int flags = ::fcntl(descriptor, F_GETFL);
-        if (flags < 0 || ::fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) != 0) {
-            posix_check(errno, "Cannot configure process output");
+        for (int descriptor : {output.read.value, output.write.value, error.read.value,
+                                error.write.value, input.value}) {
+            if (descriptor > STDERR_FILENO) {
+                posix_check(posix_spawn_file_actions_addclose(&actions.value, descriptor),
+                            "Cannot close inherited descriptor");
+            }
         }
-    }
-    bool stopping = false;
-    auto stopped = start;
-    auto exited = start;
-    const auto drain = [&](Descriptor& pipe, bool standard_output) {
-        std::array<char, 16384> buffer;
-        for (int chunk = 0; chunk < 64 && pipe.value >= 0; ++chunk) {
-            const auto count = ::read(pipe.value, buffer.data(), buffer.size());
-            if (count > 0) {
-                const std::string_view bytes(buffer.data(), static_cast<std::size_t>(count));
-                if (standard_output) {
-                    capture(result.standard_output, result.stdout_truncated, bytes, request.output_limit);
-                    if (request.on_stdout) request.on_stdout(bytes);
-                } else {
-                    capture(result.standard_error, result.stderr_truncated, bytes, request.output_limit);
+        posix_check(posix_spawnattr_setpgroup(&attributes.value, 0), "Cannot set process group");
+        posix_check(posix_spawnattr_setflags(&attributes.value, POSIX_SPAWN_SETPGROUP),
+                    "Cannot set spawn flags");
+        std::vector<std::string> storage{executable.native()};
+        storage.insert(storage.end(), request.arguments.begin(), request.arguments.end());
+        std::vector<char*> arguments;
+        for (auto& argument : storage) arguments.push_back(argument.data());
+        arguments.push_back(nullptr);
+        Child child;
+        posix_check(posix_spawn(&child.pid, executable.c_str(), &actions.value,
+                                &attributes.value, arguments.data(), environ), "Cannot start process");
+        input.close();
+        output.write.close();
+        error.write.close();
+        for (int descriptor : {output.read.value, error.read.value}) {
+            const int flags = ::fcntl(descriptor, F_GETFL);
+            if (flags < 0 || ::fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) != 0) {
+                posix_check(errno, "Cannot configure process output");
+            }
+        }
+        bool stopping = false;
+        auto stopped = start;
+        auto exited = start;
+        const auto drain = [&](Descriptor& pipe, bool standard_output) {
+            std::array<char, 16384> buffer;
+            for (int chunk = 0; chunk < 64 && pipe.value >= 0; ++chunk) {
+                const auto count = ::read(pipe.value, buffer.data(), buffer.size());
+                if (count > 0) {
+                    const std::string_view bytes(buffer.data(), static_cast<std::size_t>(count));
+                    if (standard_output) {
+                        capture(result.standard_output, result.stdout_truncated, bytes, request.output_limit);
+                        if (request.on_stdout) request.on_stdout(bytes);
+                    } else {
+                        capture(result.standard_error, result.stderr_truncated, bytes, request.output_limit);
+                    }
+                } else if (count == 0) {
+                    pipe.close();
+                } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    break;
+                } else if (errno != EINTR) {
+                    posix_check(errno, "Cannot read process output");
                 }
-            } else if (count == 0) {
-                pipe.close();
-            } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break;
-            } else if (errno != EINTR) {
-                posix_check(errno, "Cannot read process output");
             }
-        }
-    };
-    while (!child.reaped || output.read.value >= 0 || error.read.value >= 0) {
-        const auto now = std::chrono::steady_clock::now();
-        if (!child.reaped && !stopping && (stop.stop_requested() ||
-            (request.timeout.count() > 0 && now - start >= request.timeout))) {
-            result.cancelled = stop.stop_requested();
-            result.timed_out = !result.cancelled;
-            stopping = true;
-            stopped = now;
-            ::kill(-child.pid, SIGTERM);
-        }
-        if (!child.reaped && stopping && now - stopped >= std::chrono::milliseconds(500)) {
-            ::kill(-child.pid, SIGKILL);
-        }
-        drain(output.read, true);
-        drain(error.read, false);
-        if (!child.reaped) {
-            int status = 0;
-            const auto waited = ::waitpid(child.pid, &status, WNOHANG);
-            if (waited == child.pid) {
-                child.reaped = true;
-                exited = now;
-                result.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+        };
+        while (!child.reaped || output.read.value >= 0 || error.read.value >= 0) {
+            const auto now = std::chrono::steady_clock::now();
+            if (!child.reaped && !stopping && (stop.stop_requested() ||
+                (request.timeout.count() > 0 && now - start >= request.timeout))) {
+                result.cancelled = stop.stop_requested();
+                result.timed_out = !result.cancelled;
+                stopping = true;
+                stopped = now;
+                ::kill(-child.pid, SIGTERM);
+            }
+            if (!child.reaped && stopping && now - stopped >= std::chrono::milliseconds(500)) {
                 ::kill(-child.pid, SIGKILL);
-            } else if (waited < 0 && errno != EINTR) {
-                posix_check(errno, "Cannot wait for process");
             }
-        } else if (now - exited > std::chrono::milliseconds(250)) {
-            output.read.close();
-            error.read.close();
-        }
-        if (!child.reaped || output.read.value >= 0 || error.read.value >= 0) {
-            pollfd descriptors[2]{{output.read.value, POLLIN, 0}, {error.read.value, POLLIN, 0}};
-            if (::poll(descriptors, 2, 20) < 0 && errno != EINTR) {
-                posix_check(errno, "Cannot wait for process output");
+            drain(output.read, true);
+            drain(error.read, false);
+            if (!child.reaped) {
+                int status = 0;
+                const auto waited = ::waitpid(child.pid, &status, WNOHANG);
+                if (waited == child.pid) {
+                    child.reaped = true;
+                    exited = now;
+                    result.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+                    ::kill(-child.pid, SIGKILL);
+                } else if (waited < 0 && errno != EINTR) {
+                    posix_check(errno, "Cannot wait for process");
+                }
+            } else if (now - exited > std::chrono::milliseconds(250)) {
+                output.read.close();
+                error.read.close();
+            }
+            if (!child.reaped || output.read.value >= 0 || error.read.value >= 0) {
+                pollfd descriptors[2]{{output.read.value, POLLIN, 0}, {error.read.value, POLLIN, 0}};
+                if (::poll(descriptors, 2, 20) < 0 && errno != EINTR) {
+                    posix_check(errno, "Cannot wait for process output");
+                }
             }
         }
-    }
 #endif
     return result;    
 
