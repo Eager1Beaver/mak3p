@@ -191,4 +191,26 @@ fs::path default_settings_directory() {
     return root.empty() || !root.is_absolute() ? fs::path{} : root / "PortableAudioToMP3";
 }
 
+SettingsStore::SettingsStore(fs::path application_directory, fs::path fallback_directory)
+    : application_directory_(fs::absolute(application_directory).lexically_normal()),
+      fallback_directory_(std::move(fallback_directory)) {}
+
+void SettingsStore::select() {
+    fallback_ = false;
+    selected_ = application_directory_ / "config.ini";
+    std::error_code error;
+    const auto status = fs::symlink_status(selected_, error);
+    const bool portable_file_writable = (!error && status.type() == fs::file_type::not_found) ||
+        error == std::errc::no_such_file_or_directory ||
+        (!error && fs::is_regular_file(status) && detail::writable_existing_file(selected_));
+    if (detail::writable_directory(application_directory_) && portable_file_writable) return;
+    if (fallback_directory_.empty()) throw std::runtime_error("No writable settings fallback is available");
+    fs::create_directories(fallback_directory_);
+    if (!detail::writable_directory(fallback_directory_)) {
+        throw std::runtime_error("The settings fallback is not writable");
+    }
+    selected_ = fallback_directory_ / "config.ini";
+    fallback_ = true;
+}
+
 } // namespace audio_converter
