@@ -324,4 +324,47 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
     }
 }
 
+Inspection AudioProcessor::inspect(const SourceFile& source, 
+                                   const AudioSettings& settings,
+                                   std::stop_token stop) const {
+    validate_settings(settings);
+    Inspection inspection;
+    inspection.source = source;
+    inspection.settings = settings;
+    try {
+        if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
+        inspection.source.path = normalize_source_path(source.path);
+        if (!fs::is_regular_file(inspection.source.path)) {
+            throw AudioError({"source_unreadable", {}, {}});
+        }
+        inspection.source_size = fs::file_size(inspection.source.path);
+        inspection.source_modified = fs::last_write_time(inspection.source.path);
+        auto media = probe(inspection.source.path, true, stop);
+        source_unchanged(inspection);
+        const bool mp3 = format_is_mp3(media);
+        inspection.media = std::move(media);
+        if (mp3 && source.origin == ImportOrigin::FolderScan &&
+            !settings.include_mp3_from_folders) {
+            inspection.diagnostic = {"mp3_excluded", {}, {}};
+            return inspection;
+        }
+        const auto& audio = inspection.media->audio;
+        if (mp3 && inspection.media->mp3.mode == Mp3BitrateMode::Cbr &&
+            inspection.media->mp3.bitrate_kbps == settings.bitrate_kbps &&
+            output_channels(audio.channels, settings.channel_mode) == audio.channels) {
+            inspection.state = JobState::SameBitrateSkipped;
+            inspection.diagnostic = {"same_bitrate", {}, {}};
+            return inspection;
+        }
+        inspection.state = JobState::Ready;
+        inspection.diagnostic = {"ready", {}, {}};
+    } catch (const AudioError& error) {
+        inspection.diagnostic = error.diagnostic();
+        if (inspection.diagnostic.key == "process_cancelled") inspection.state = JobState::Cancelled;
+    } catch (const std::exception& error) {
+        inspection.diagnostic = {"source_unreadable", {}, error.what()};
+    }
+    return inspection;
+}
+
 } // namespace audio_converter
