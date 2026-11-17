@@ -1,4 +1,6 @@
 /build/
+/build-*/
+/out/
 /vcpkg_installed/
 CMakeUserPresets.json
 /.cache/
@@ -6,9 +8,3 @@ CMakeUserPresets.json
 *.swp
 *.swo
 .DS_Store
-
-
-src/main.cpp
-README.md
-docs
-CMakePresets.json
