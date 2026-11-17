@@ -346,4 +346,16 @@ BatchEngine::BatchEngine(BatchBackend backend, fs::path directory, std::string v
 
 BatchEngine::~BatchEngine() { cancel(); wait(); }
 
+QueueAddResult BatchEngine::add(const fs::path& path, ImportOrigin origin) {
+    std::lock_guard lock(impl_->mutex);
+    impl_->require_idle();
+    const auto result = impl_->queue.add(path, origin);
+    if (result.added) impl_->rows.emplace(result.id, Impl::Row{});
+    else if (result.origin_changed) {
+        impl_->queue.job(result.id).reset(); impl_->rows.at(result.id) = Impl::Row{};
+    }
+    return result;
+}
+
+
 } // namespace audio_converter
