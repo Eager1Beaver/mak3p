@@ -17,6 +17,7 @@
 namespace audio_converter {
 namespace {
 
+using Json = nlohmann::json;
 
 std::string process_detail(const ProcessResult& result) {
     auto detail = result.standard_error;
@@ -39,6 +40,14 @@ std::optional<Number> number(const std::string& text) {
         if (!std::isfinite(value)) return std::nullopt;
     }
     return value;
+}
+
+std::optional<double> duration(const Json& object) {
+    if (!object.contains("duration")) return std::nullopt;
+    const auto& value = object.at("duration");
+    const auto parsed = value.is_string() ? number<double>(value.get<std::string>()) :
+        value.is_number() ? std::optional<double>(value.get<double>()) : std::nullopt;
+    return parsed && std::isfinite(*parsed) && *parsed > 0 ? parsed : std::nullopt;
 }
 
 bool format_is_mp3(const MediaInfo& media) {
