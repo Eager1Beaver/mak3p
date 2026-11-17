@@ -67,4 +67,11 @@ void validate_settings(const AppSettings& settings) {
     (void)utf8_path(path_utf8(settings.custom_output_directory));
 }
 
+std::size_t worker_count(unsigned requested, unsigned logical_processors, std::size_t jobs) {
+    if (requested > maximum_worker_override) throw AudioError({"invalid_workers", {}, {}});
+    const auto count = requested ? requested :
+        logical_processors ? std::max(1U, logical_processors / 2) : 2U;
+    return std::min<std::size_t>(count, jobs);
+}
+
 } // namespace audio_converter
