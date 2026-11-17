@@ -20,6 +20,7 @@ struct AudioSettings {
     int bitrate_kbps = 256;
     ChannelMode channel_mode = ChannelMode::Auto;
     bool include_mp3_from_folders = false;
+    bool force_upsampling = false;
     bool operator==(const AudioSettings&) const = default;
 };
 
@@ -41,6 +42,7 @@ struct AudioStream {
     std::string channel_layout;
     std::optional<double> duration_seconds;
     MediaTags tags;
+    std::optional<std::uint64_t> bitrate_bps;
 };
 
 struct MediaInfo {
@@ -49,6 +51,8 @@ struct MediaInfo {
     MediaTags tags;
     std::optional<double> duration_seconds;
     Mp3Analysis mp3{Mp3BitrateMode::NotMp3, std::nullopt, std::nullopt};
+    std::optional<std::uint64_t> bitrate_bps;
+    bool bitrate_estimated = false;
 };
 
 struct Inspection {
@@ -59,6 +63,7 @@ struct Inspection {
     std::optional<MediaInfo> media;
     std::uintmax_t source_size = 0;
     fs::file_time_type source_modified{};
+    std::vector<Diagnostic> warnings;
 };
 
 struct EnginePaths {
