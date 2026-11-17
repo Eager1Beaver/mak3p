@@ -234,4 +234,17 @@ SettingsLoadResult SettingsStore::load() {
     return result;
 }
 
+std::vector<Diagnostic> SettingsStore::save(const AppSettings& settings) {
+    validate_settings(settings);
+    try {
+        select();
+        const auto temporary = detail::temporary_file(selected_.parent_path());
+        temporary->write(serialize_settings(settings));
+        temporary->replace(selected_);
+        return {};
+    } catch (const std::exception& error) {
+        return {{"settings_save_failed", {}, error.what()}};
+    }
+}
+
 } // namespace audio_converter
