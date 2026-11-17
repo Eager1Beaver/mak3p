@@ -53,6 +53,29 @@ ExclusiveFile::ExclusiveFile(fs::path path) : impl_(std::make_unique<Impl>()) {
 
 }
 
+ExclusiveFile::~ExclusiveFile() = default;
+const fs::path& ExclusiveFile::path() const noexcept { return impl_->path; }
+void ExclusiveFile::retain() noexcept { impl_->retained = true; }
+
+void ExclusiveFile::write(std::string_view bytes) {
+    while (!bytes.empty()) {
+
+        const auto written = ::write(impl_->handle, bytes.data(), bytes.size());
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) throw fs::filesystem_error("Cannot write file", 
+                                                     impl_->path,
+                                                     std::error_code(errno, std::generic_category()));
+        bytes.remove_prefix(static_cast<std::size_t>(written));
+    }
+}
+
+void ExclusiveFile::replace(const fs::path& destination) {
+    if (!impl_->owned()) throw std::runtime_error("The temporary settings file was replaced");
+
+    if (::fsync(impl_->handle) != 0) throw std::system_error(errno, std::generic_category());
+    fs::rename(impl_->path, destination);
+    impl_->retained = true;
+}
 
 
 } // namespace audio_converter::detail
