@@ -1,4 +1,5 @@
 #include "app/settings.hpp"
+#include "app/identity.hpp"
 #include "app/file_io.hpp"
 #include "audio/process.hpp"
 
@@ -216,7 +217,7 @@ fs::path default_settings_directory() {
         root = fs::path(home_directory) / ".config";
     }
 #endif
-    return root.empty() || !root.is_absolute() ? fs::path{} : root / "PortableAudioToMP3";
+    return root.empty() || !root.is_absolute() ? fs::path{} : root / application_name;
 }
 
 SettingsStore::SettingsStore(fs::path application_directory, fs::path fallback_directory)
