@@ -164,4 +164,50 @@ int output_sample_rate(int source_rate) {
     return std::abs(source_rate - 44100) < std::abs(source_rate - 48000) ? 44100 : 48000;
 }
 
+namespace {
+
+enum class Mp3Scan { BoundedInput, CompleteOutput };
+
+Mp3Analysis scan_mp3(const fs::path& source, std::stop_token stop, Mp3Scan scope) {
+    const bool bounded = scope == Mp3Scan::BoundedInput;
+    std::error_code size_error;
+    const auto size = fs::file_size(source, size_error);
+    if (size_error || (bounded && size > 256ULL * 1024 * 1024)) return {};
+    TagLib::FileStream stream(source.c_str(), true);
+    if (!stream.isOpen()) return {};
+    TagLib::MPEG::File file(&stream, false);
+    if (!file.isValid()) return {};
+    const auto first = file.firstFrameOffset();
+    const auto last = file.lastFrameOffset();
+    if (first < 0 || last <= first ||
+        (bounded && last - first > 256LL * 1024 * 1024)) return {};
+    auto offset = first;
+    int bitrate = 0;
+    int sample_rate = 0;
+    bool variable = false;
+    double seconds = 0;
+    for (std::uint64_t frames = 0; (!bounded || frames < 1'000'000) && offset <= last; ++frames) {
+        if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
+        TagLib::MPEG::Header header(&file, offset, false);
+        if (!header.isValid() || header.layer() != 3 || header.frameLength() < 4 ||
+            header.bitrate() <= 0 || header.sampleRate() <= 0 ||
+            offset + header.frameLength() > file.length()) return {};
+        if (frames == 0) {
+            bitrate = header.bitrate();
+            sample_rate = header.sampleRate();
+        }
+        if (sample_rate != header.sampleRate()) return {};
+        variable = variable || header.bitrate() != bitrate;
+        seconds += static_cast<double>(header.samplesPerFrame()) / header.sampleRate();
+        if (offset == last) {
+            return {variable ? Mp3BitrateMode::Vbr : Mp3BitrateMode::Cbr,
+                    variable ? std::nullopt : std::optional<int>(bitrate), seconds};
+        }
+        offset += header.frameLength();
+    }
+    return {};
+}
+
+} // namespace
+
 } // namespace audio_converter
