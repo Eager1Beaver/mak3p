@@ -210,4 +210,8 @@ Mp3Analysis scan_mp3(const fs::path& source, std::stop_token stop, Mp3Scan scope
 
 } // namespace
 
+Mp3Analysis analyze_mp3(const fs::path& source, std::stop_token stop) {
+    return scan_mp3(source, stop, Mp3Scan::BoundedInput);
+}
+
 } // namespace audio_converter
