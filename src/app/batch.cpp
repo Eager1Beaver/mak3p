@@ -371,5 +371,18 @@ void BatchEngine::clear() {
     impl_->queue.clear(); impl_->rows.clear(); impl_->excluded = 0;
 }
 
+void BatchEngine::configure(AppSettings settings) {
+    validate_settings(settings);
+    if (!settings.custom_output_directory.empty()) {
+        settings.custom_output_directory = fs::absolute(settings.custom_output_directory).lexically_normal();
+    }
+    std::lock_guard lock(impl_->mutex);
+    impl_->require_idle();
+    if (impl_->settings == settings) return;
+    impl_->settings = std::move(settings);
+    for (const auto& entry : impl_->queue.jobs()) {
+        impl_->queue.job(entry.id()).reset(); impl_->rows.at(entry.id()) = Impl::Row{};
+    }
+}
 
 } // namespace audio_converter
