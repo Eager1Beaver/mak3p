@@ -55,5 +55,16 @@ std::string read_ini(const fs::path& path) {
 
 } // namespace
 
+void validate_settings(const AppSettings& settings) {
+    validate_settings(settings.audio);
+    if (settings.workers > maximum_worker_override) throw AudioError({"invalid_workers", {}, {}});
+    if (settings.output_mode != OutputMode::SameAsSource &&
+        settings.output_mode != OutputMode::CustomDirectory) {
+        throw AudioError({"invalid_output_mode", {}, {}});
+    }
+    if (settings.output_mode == OutputMode::CustomDirectory &&
+        settings.custom_output_directory.empty()) throw AudioError({"invalid_output_directory", {}, {}});
+    (void)utf8_path(path_utf8(settings.custom_output_directory));
+}
 
 } // namespace audio_converter
