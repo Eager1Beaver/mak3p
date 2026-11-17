@@ -24,8 +24,29 @@ namespace audio_converter::detail {
 struct ExclusiveFile::Impl {
     fs::path path;
     bool retained = false;
-
-int handle = -1;
+#ifdef _WIN32
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    BY_HANDLE_FILE_INFORMATION identity{};
+    bool owned() const {
+        const auto probe = CreateFileW(windows_api_path(path).c_str(), FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (probe == INVALID_HANDLE_VALUE) return false;
+        BY_HANDLE_FILE_INFORMATION current{};
+        const bool result = GetFileInformationByHandle(probe, &current) &&
+            !(current.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+            current.dwVolumeSerialNumber == identity.dwVolumeSerialNumber &&
+            current.nFileIndexHigh == identity.nFileIndexHigh &&
+            current.nFileIndexLow == identity.nFileIndexLow;
+        CloseHandle(probe);
+        return result;
+    }
+    void close() noexcept {
+        if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle);
+        handle = INVALID_HANDLE_VALUE;
+    }
+#else
+    int handle = -1;
     struct stat identity{};
     bool owned() const {
         struct stat current{};
@@ -36,9 +57,8 @@ int handle = -1;
         if (handle >= 0) ::close(handle);
         handle = -1;
     }
-
-
-~Impl() {
+#endif
+    ~Impl() {
         if (!retained && owned()) {
             std::error_code ignored;
             fs::remove(path, ignored);
@@ -54,14 +74,25 @@ ExclusiveFile::ExclusiveFile(fs::path path) : impl_(std::make_unique<Impl>()) {
         throw std::invalid_argument("A file name is required");
     }
     impl_->path = normalize_directory(absolute.parent_path()) / absolute.filename();
-
+#ifdef _WIN32
+    impl_->handle = CreateFileW(windows_api_path(impl_->path).c_str(), GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (impl_->handle == INVALID_HANDLE_VALUE) {
+        throw fs::filesystem_error("Cannot create file exclusively", path,
+            std::error_code(static_cast<int>(GetLastError()), std::system_category()));
+    }
+    if (!GetFileInformationByHandle(impl_->handle, &impl_->identity)) {
+        throw fs::filesystem_error("Cannot identify created file", path,
+            std::error_code(static_cast<int>(GetLastError()), std::system_category()));
+    }
+#else
     impl_->handle = ::open(impl_->path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     if (impl_->handle < 0 || ::fstat(impl_->handle, &impl_->identity) != 0) {
         throw fs::filesystem_error("Cannot create file exclusively", 
                                     path,
                                     std::error_code(errno, std::generic_category()));
     }
-
+#endif
 }
 
 ExclusiveFile::~ExclusiveFile() = default;
@@ -70,21 +101,42 @@ void ExclusiveFile::retain() noexcept { impl_->retained = true; }
 
 void ExclusiveFile::write(std::string_view bytes) {
     while (!bytes.empty()) {
-
+#ifdef _WIN32
+        DWORD written = 0;
+        if (!WriteFile(impl_->handle, bytes.data(),
+                       static_cast<DWORD>(std::min<std::size_t>(bytes.size(), 1U << 30)),
+                       &written, nullptr) || written == 0) {
+            throw fs::filesystem_error("Cannot write file", impl_->path,
+                std::error_code(static_cast<int>(GetLastError()), std::system_category()));
+        }
+#else
         const auto written = ::write(impl_->handle, bytes.data(), bytes.size());
         if (written < 0 && errno == EINTR) continue;
         if (written <= 0) throw fs::filesystem_error("Cannot write file", 
                                                      impl_->path,
                                                      std::error_code(errno, std::generic_category()));
+#endif
         bytes.remove_prefix(static_cast<std::size_t>(written));
     }
 }
 
 void ExclusiveFile::replace(const fs::path& destination) {
     if (!impl_->owned()) throw std::runtime_error("The temporary settings file was replaced");
-
+#ifdef _WIN32
+    if (!FlushFileBuffers(impl_->handle)) {
+        throw std::system_error(static_cast<int>(GetLastError()), std::system_category());
+    }
+    impl_->close();
+    if (!MoveFileExW(windows_api_path(impl_->path).c_str(),
+                     windows_api_path(destination).c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        throw fs::filesystem_error("Cannot replace settings", destination,
+            std::error_code(static_cast<int>(GetLastError()), std::system_category()));
+    }
+#else
     if (::fsync(impl_->handle) != 0) throw std::system_error(errno, std::generic_category());
     fs::rename(impl_->path, destination);
+#endif
     impl_->retained = true;
 }
 
