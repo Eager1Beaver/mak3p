@@ -12,7 +12,8 @@ public:
            const AppSettings& settings, std::span<const ConversionJob> inputs);
     [[nodiscard]] const fs::path& path() const noexcept;
     void outcome(const ConversionJob& job, const Diagnostic& diagnostic,
-                 const std::vector<Diagnostic>& warnings);
+                 const std::vector<Diagnostic>& warnings,
+                 std::optional<int> output_bitrate_kbps = std::nullopt);
     void finish(std::size_t completed, std::size_t skipped, std::size_t failed,
                 std::size_t cancelled, std::size_t excluded);
 private:

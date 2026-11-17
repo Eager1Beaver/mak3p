@@ -1,4 +1,5 @@
 #include "app/run_log.hpp"
+#include "app/identity.hpp"
 #include "audio/process.hpp"
 
 #include <chrono>
@@ -21,7 +22,7 @@ RunLog::RunLog(const fs::path& directory, const std::string& application_version
     std::ostringstream timestamp;
     timestamp << std::put_time(&utc, "%Y-%m-%d_%H%M%S");
     for (unsigned suffix = 0; suffix < 10000; ++suffix) {
-        const auto name = "AudioConverter_" + timestamp.str() +
+        const auto name = std::string(application_name) + "_" + timestamp.str() +
             (suffix ? "_" + std::to_string(suffix) : "") + ".log";
         try {
             file_ = std::make_unique<detail::ExclusiveFile>(directory / name);
@@ -52,10 +53,13 @@ void RunLog::diagnostic(const Diagnostic& value) {
 }
 
 void RunLog::outcome(const ConversionJob& job, const Diagnostic& value,
-                      const std::vector<Diagnostic>& warnings) {
+                      const std::vector<Diagnostic>& warnings,
+                      std::optional<int> output_bitrate_kbps) {
     line(message({"log_result", {{"id", std::to_string(job.id())},
         {"path", detail::safe_log_text(path_utf8(job.source().path))},
         {"status", detail::safe_log_text(message(value))}}, {}}));
+    if (output_bitrate_kbps) line("  " + message({"cli_output_bitrate",
+        {{"bitrate", std::to_string(*output_bitrate_kbps)}}, {}}));
     if (job.output()) line(message({"cli_output", {{"path", detail::safe_log_text(path_utf8(*job.output()))}}, {}}));
     if (!value.technical_detail.empty()) line("  " + detail::safe_log_text(value.technical_detail));
     for (const auto& warning : warnings) diagnostic(warning);
