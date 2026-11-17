@@ -153,4 +153,21 @@ SettingsResult parse_settings(std::string_view ini, const fs::path& base_directo
     return result;
 }
 
+std::string serialize_settings(const AppSettings& settings) {
+    validate_settings(settings);
+    std::ostringstream out;
+    out << std::boolalpha << "[conversion]\nbitrate_kbps=" << settings.audio.bitrate_kbps
+        << "\nchannel_mode=" << (settings.audio.channel_mode == ChannelMode::Mono ? "mono" :
+                                   settings.audio.channel_mode == ChannelMode::Stereo ? "stereo" : "auto")
+        << "\noutput_mode=" << (settings.output_mode == OutputMode::SameAsSource ?
+                                  "same_as_source" : "custom_directory")
+        << "\ncustom_output_directory=" << std::quoted(path_utf8(settings.custom_output_directory))
+        << "\nforce_upsampling=" << settings.audio.force_upsampling
+        << "\n\n[import]\ninclude_mp3_from_folders=" << settings.audio.include_mp3_from_folders
+        << "\nrecursive_folders=" << settings.recursive_folders
+        << "\n\n[processing]\nworkers=" << (settings.workers ? std::to_string(settings.workers) : "auto")
+        << "\n\n[logging]\nenabled=" << settings.logging_enabled << '\n';
+    return out.str();
+}
+
 } // namespace audio_converter
