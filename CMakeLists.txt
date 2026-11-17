@@ -52,8 +52,17 @@ if(AUDIO_CONVERTER_BUILD_AUDIO)
     target_link_libraries(audio_converter_audio PUBLIC audio_converter_core PRIVATE TagLib::tag)
     audio_converter_warnings(audio_converter_audio)
 
+    add_library(audio_converter_batch STATIC
+        src/app/file_io.cpp
+        src/app/settings.cpp
+        src/app/run_log.cpp
+        src/app/batch.cpp
+    )
+    target_link_libraries(audio_converter_batch PUBLIC audio_converter_audio)
+    audio_converter_warnings(audio_converter_batch)
+
     add_executable(audio_converter_cli src/cli/main.cpp)
-    target_link_libraries(audio_converter_cli PRIVATE audio_converter_audio)
+    target_link_libraries(audio_converter_cli PRIVATE audio_converter_batch)
     if(MINGW)
         target_link_options(audio_converter_cli PRIVATE -municode)
     endif()
