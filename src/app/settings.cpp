@@ -188,16 +188,34 @@ SettingsResult read_settings(const fs::path& path) {
 }
 
 fs::path executable_directory() {
+#ifdef _WIN32
+    std::wstring buffer(32768, L'\0');
+    const auto count = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (!count || count >= buffer.size()) throw std::runtime_error("Cannot locate executable");
+    buffer.resize(count);
+    return fs::path(buffer).parent_path();
+#else
     return fs::read_symlink("/proc/self/exe").parent_path();
+#endif
 }
 
 fs::path default_settings_directory() {
+#ifdef _WIN32
+    const auto size = GetEnvironmentVariableW(L"LOCALAPPDATA", nullptr, 0);
+    if (!size) return {};
+    std::wstring value(size, L'\0');
+    const auto count = GetEnvironmentVariableW(L"LOCALAPPDATA", value.data(), size);
+    if (!count || count >= size) return {};
+    value.resize(count);
+    const fs::path root(value);
+#else
     fs::path root;
     if (const auto* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg && fs::path(xdg).is_absolute()) {
         root = xdg;
     } else if (const auto* home_directory = std::getenv("HOME"); home_directory && *home_directory) {
         root = fs::path(home_directory) / ".config";
     }
+#endif
     return root.empty() || !root.is_absolute() ? fs::path{} : root / "PortableAudioToMP3";
 }
 
