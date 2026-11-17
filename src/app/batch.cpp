@@ -29,5 +29,18 @@ BatchCounts counts_for(std::span<const ConversionJob> jobs, std::size_t excluded
 }
 } // namespace
 
+BatchBackend batch_backend(std::shared_ptr<const AudioProcessor> processor) {
+    if (!processor) throw std::invalid_argument("An audio processor is required");
+    return {
+        [processor](const SourceFile& source, const AudioSettings& settings, std::stop_token stop) {
+            return processor->inspect(source, settings, stop);
+        },
+        [processor](const Inspection& input, const AudioSettings& settings, OutputTransaction& output,
+                    std::stop_token stop, ProgressCallback progress) {
+            return processor->convert(input, settings, output, stop, std::move(progress));
+        }, processor->ffmpeg_version(), processor->ffprobe_version()
+    };
+}
+
 
 } // namespace audio_converter
