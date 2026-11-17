@@ -18,6 +18,7 @@ namespace audio_converter {
 namespace {
 
 using Json = nlohmann::json;
+using namespace std::chrono_literals;
 
 std::string process_detail(const ProcessResult& result) {
     auto detail = result.standard_error;
@@ -75,6 +76,43 @@ void source_unchanged(const Inspection& input) {
     }
 }
 
+class ProgressReader {
+public:
+    ProgressReader(std::optional<double> duration_seconds, ProgressCallback callback)
+        : duration_(duration_seconds), callback_(std::move(callback)) {}
+
+    void consume(std::string_view bytes) {
+        if (!callback_) return;
+        pending_.append(bytes);
+        std::size_t newline = 0;
+        while ((newline = pending_.find('\n')) != std::string::npos) {
+            auto line = pending_.substr(0, newline);
+            pending_.erase(0, newline + 1);
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            constexpr std::string_view prefix = "out_time_us=";
+            if (line.starts_with(prefix)) {
+                if (const auto value = number<long long>(line.substr(prefix.size()))) {
+                    ProgressUpdate update;
+                    update.audio_time = std::chrono::microseconds(std::max(0LL, *value));
+                    if (duration_) {
+                        update.fraction = std::clamp(
+                            static_cast<double>(update.audio_time.count()) / 1'000'000.0 / *duration_,
+                            0.0, 0.99);
+                    }
+                    callback_(update);
+                }
+            }
+        }
+        if (pending_.size() > 65536) {
+            throw AudioError({"probe_invalid", {}, "Progress record exceeded its size limit"});
+        }
+    }
+
+private:
+    std::optional<double> duration_;
+    ProgressCallback callback_;
+    std::string pending_;
+};
 
 }
 
