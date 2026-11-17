@@ -209,4 +209,111 @@ struct BatchEngine::Impl {
         for (auto& worker : pool) worker.join();
     }
 
+    void run(bool convert) {
+        try {
+            if (convert) create_log();
+            std::vector<JobId> ids;
+            {
+                std::lock_guard lock(mutex);
+                for (const auto& job : queue.jobs()) ids.push_back(job.id());
+            }
+            parallel(ids, [&](JobId id) { inspect_one(id); });
+            if (convert && !stop.stop_requested()) {
+                ids.clear();
+                {
+                    std::lock_guard lock(mutex);
+                    phase = BatchPhase::Converting;
+                    for (const auto& job : queue.jobs()) if (job.state() == JobState::Ready) ids.push_back(job.id());
+                }
+                OutputPathPlanner planner;
+                std::mutex allocation;
+                parallel(ids, [&](JobId id) {
+                    std::unique_ptr<OutputTransaction> transaction;
+                    Inspection input;
+                    {
+                        std::lock_guard allocation_lock(allocation);
+                        {
+                            std::lock_guard lock(mutex);
+                            if (stop.stop_requested()) return;
+                            auto& job = queue.job(id);
+                            job.start();
+                            auto& row = rows.at(id);
+                            row.started = Clock::now();
+                            row.diagnostic = {"converting", {}, {}};
+                            input = *row.inspection;
+                        }
+                        const auto destination = settings.output_mode == OutputMode::CustomDirectory ?
+                            std::optional<fs::path>(settings.custom_output_directory) : std::nullopt;
+                        // The allocator reserves the name before releasing a job to conversion.
+                        transaction = std::make_unique<OutputTransaction>(planner,
+                            OutputRequest{input.source.path, destination});
+                    }
+                    ConversionResult result;
+                    try {
+                        result = backend.convert(input, settings.audio, *transaction, stop.get_token(),
+                            [this, id](const ProgressUpdate& update) {
+                                std::lock_guard lock(mutex);
+                                auto& job = queue.job(id);
+                                if (job.state() != JobState::Converting) return;
+                                auto fraction = update.fraction;
+                                if (fraction) *fraction = std::min(*fraction, 0.99);
+                                if (!fraction || !job.progress() || *fraction >= *job.progress()) job.update_progress(fraction);
+                            });
+                    } catch (const std::exception& error) {
+                        result.diagnostic = {"conversion_failed", {}, error.what()};
+                    }
+                    // A backend may throw after publishing; publication is irreversible.
+                    if (transaction->committed()) {
+                        result.state = JobState::Completed;
+                        result.output = transaction->final_path();
+                        result.diagnostic = {"completed", {}, {}};
+                    } else {
+                        if (stop.stop_requested()) {
+                            result.state = JobState::Cancelled;
+                            result.diagnostic = {"cancelled", {}, {}};
+                        } else if (result.state == JobState::Completed) {
+                            result.state = JobState::Failed;
+                            result.diagnostic = {"output_invalid", {}, "The output was not committed"};
+                        }
+                        try { transaction->discard(); }
+                        catch (const std::exception& error) { result.warnings.push_back({"cleanup_failed", {}, error.what()}); }
+                    }
+                    finish_conversion(id, std::move(result));
+                });
+            }
+        } catch (const std::exception& error) {
+            {
+                std::lock_guard lock(mutex);
+                warnings.push_back({"batch_failed", {}, error.what()});
+            }
+            stop.request_stop();
+        }
+        std::vector<std::pair<ConversionJob, Row>> unfinished;
+        BatchCounts counts;
+        {
+            std::lock_guard lock(mutex);
+            for (const auto& entry : queue.jobs()) {
+                auto& job = queue.job(entry.id());
+                if (stop.stop_requested() && (job.state() == JobState::Checking ||
+                    job.state() == JobState::Ready || job.state() == JobState::Converting)) {
+                    job.cancel();
+                    auto& row = rows.at(job.id());
+                    row.diagnostic = {"cancelled", {}, {}};
+                    if (row.started) row.finished = Clock::now();
+                    unfinished.emplace_back(job, row);
+                }
+            }
+            counts = counts_for(queue.jobs(), excluded);
+        }
+        for (const auto& [job, row] : unfinished) emit(job, row);
+        if (log) {
+            try { log->finish(counts.completed, counts.skipped, counts.failed, counts.cancelled, counts.excluded); }
+            catch (const std::exception& error) { log_error(error, "log_write_failed"); }
+        }
+        log.reset();
+        std::lock_guard lock(mutex);
+        workers = 0;
+        phase = BatchPhase::Idle;
+    }
+
 } // namespace audio_converter
