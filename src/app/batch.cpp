@@ -42,5 +42,34 @@ BatchBackend batch_backend(std::shared_ptr<const AudioProcessor> processor) {
     };
 }
 
+struct BatchEngine::Impl {
+    struct Row {
+        std::optional<Inspection> inspection;
+        Diagnostic diagnostic{"checking", {}, {}};
+        std::vector<Diagnostic> warnings;
+        std::optional<Clock::time_point> started;
+        std::optional<Clock::time_point> finished;
+    };
+    BatchBackend backend;
+    fs::path directory;
+    std::string version;
+    mutable std::mutex mutex;
+    std::mutex lifecycle;
+    std::mutex log_mutex;
+    FileQueue queue;
+    std::map<JobId, Row> rows;
+    AppSettings settings;
+    BatchPhase phase = BatchPhase::Idle;
+    std::size_t workers = 0;
+    std::size_t excluded = 0;
+    std::vector<Diagnostic> warnings;
+    std::optional<fs::path> log_path;
+    std::unique_ptr<RunLog> log;
+    std::stop_source stop;
+    std::jthread coordinator;
+
+    void require_idle() const {
+        if (phase != BatchPhase::Idle) throw AudioError({"batch_busy", {}, {}});
+    }
 
 } // namespace audio_converter
