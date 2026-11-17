@@ -163,12 +163,24 @@ bool writable_directory(const fs::path& directory) {
 
 
 bool writable_existing_file(const fs::path& path) {
+#ifdef _WIN32
+    const auto handle = CreateFileW(windows_api_path(path).c_str(), GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return false;
+    BY_HANDLE_FILE_INFORMATION info{};
+    const bool regular = GetFileInformationByHandle(handle, &info) &&
+        !(info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT));
+    CloseHandle(handle);
+    return regular;
+#else
     const auto handle = ::open(path.c_str(), O_WRONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
     if (handle < 0) return false;
     struct stat info{};
     const bool regular = ::fstat(handle, &info) == 0 && S_ISREG(info.st_mode);
     ::close(handle);
     return regular;
+#endif
 }
 
 
