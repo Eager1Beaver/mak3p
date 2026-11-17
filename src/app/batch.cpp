@@ -72,4 +72,21 @@ struct BatchEngine::Impl {
         if (phase != BatchPhase::Idle) throw AudioError({"batch_busy", {}, {}});
     }
 
+    void log_error(const std::exception& error, const std::string& key) {
+        log.reset();
+        std::lock_guard lock(mutex);
+        warnings.push_back({key, {}, error.what()});
+    }
+
+    void create_log() {
+        if (!settings.logging_enabled) return;
+        // The queue cannot be mutated while this coordinator owns the run.
+        try {
+            log = std::make_unique<RunLog>(directory, version, backend.ffmpeg_version,
+                                           backend.ffprobe_version, settings, queue.jobs());
+            std::lock_guard lock(mutex);
+            log_path = log->path();
+        } catch (const std::exception& error) { log_error(error, "log_create_failed"); }
+    }
+
 } // namespace audio_converter
