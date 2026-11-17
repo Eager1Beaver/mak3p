@@ -74,4 +74,83 @@ std::size_t worker_count(unsigned requested, unsigned logical_processors, std::s
     return std::min<std::size_t>(count, jobs);
 }
 
+SettingsResult parse_settings(std::string_view ini, const fs::path& base_directory) {
+    SettingsResult result;
+    if (ini.size() > 1024 * 1024) {
+        result.warnings.push_back({"settings_read_failed", {}, "Settings exceed 1 MiB"});
+        return result;
+    }
+    if (ini.starts_with("\xef\xbb\xbf")) ini.remove_prefix(3);
+    std::istringstream lines{std::string(ini)};
+    std::set<std::string> seen;
+    std::string section;
+    unsigned line_number = 0;
+    for (std::string line; std::getline(lines, line);) {
+        ++line_number;
+        line = trim(line);
+        if (line.empty() || line.starts_with(';') || line.starts_with('#')) continue;
+        auto warn = [&](std::string detail) {
+            result.warnings.push_back({"settings_invalid_entry", {{"line", std::to_string(line_number)}},
+                                       std::move(detail)});
+        };
+        if (line.front() == '[' && line.back() == ']') {
+            section = trim(std::string_view(line).substr(1, line.size() - 2));
+            continue;
+        }
+        const auto separator = line.find('=');
+        if (separator == std::string::npos || line.find('\0') != std::string::npos) {
+            warn("Expected key=value"); continue;
+        }
+        const auto key = section + "." + trim(std::string_view(line).substr(0, separator));
+        auto value = trim(std::string_view(line).substr(separator + 1));
+        if (!seen.insert(key).second) warn("Repeated key: " + key);
+        try {
+            if (key == "conversion.bitrate_kbps") {
+                const auto rate = integer(value);
+                auto audio = result.settings.audio;
+                if (rate > 320) throw AudioError({"invalid_bitrate", {}, {}});
+                audio.bitrate_kbps = static_cast<int>(rate);
+                validate_settings(audio);
+                result.settings.audio = audio;
+            } else if (key == "conversion.channel_mode") {
+                if (value == "auto") result.settings.audio.channel_mode = ChannelMode::Auto;
+                else if (value == "stereo") result.settings.audio.channel_mode = ChannelMode::Stereo;
+                else if (value == "mono") result.settings.audio.channel_mode = ChannelMode::Mono;
+                else throw AudioError({"invalid_channels", {}, {}});
+            } else if (key == "conversion.output_mode") {
+                if (value == "same_as_source") result.settings.output_mode = OutputMode::SameAsSource;
+                else if (value == "custom_directory") result.settings.output_mode = OutputMode::CustomDirectory;
+                else throw AudioError({"invalid_output_mode", {}, {}});
+            } else if (key == "conversion.custom_output_directory") {
+                if (value.starts_with('"')) {
+                    std::istringstream quoted(value);
+                    if (!(quoted >> std::quoted(value)) || !(quoted >> std::ws).eof()) {
+                        throw std::invalid_argument("Malformed quoted path");
+                    }
+                }
+                auto path = utf8_path(value);
+                if (!path.empty() && path.is_relative()) path = fs::absolute(base_directory / path);
+                result.settings.custom_output_directory = path.lexically_normal();
+            } else if (key == "conversion.force_upsampling") {
+                result.settings.audio.force_upsampling = boolean(value);
+            } else if (key == "import.include_mp3_from_folders") {
+                result.settings.audio.include_mp3_from_folders = boolean(value);
+            } else if (key == "import.recursive_folders") {
+                result.settings.recursive_folders = boolean(value);
+            } else if (key == "processing.workers") {
+                const auto count = value == "auto" ? 0 : integer(value);
+                if (count > maximum_worker_override) throw AudioError({"invalid_workers", {}, {}});
+                result.settings.workers = count;
+            } else if (key == "logging.enabled") result.settings.logging_enabled = boolean(value);
+            else warn("Unknown key: " + key);
+        } catch (const std::exception& error) { warn(key + ": " + error.what()); }
+    }
+    if (result.settings.output_mode == OutputMode::CustomDirectory &&
+        result.settings.custom_output_directory.empty()) {
+        result.settings.output_mode = OutputMode::SameAsSource;
+        result.warnings.push_back({"invalid_output_directory", {}, {}});
+    }
+    return result;
+}
+
 } // namespace audio_converter
