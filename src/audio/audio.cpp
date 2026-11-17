@@ -51,6 +51,15 @@ std::optional<double> duration(const Json& object) {
     return parsed && std::isfinite(*parsed) && *parsed > 0 ? parsed : std::nullopt;
 }
 
+std::optional<std::uint64_t> bitrate(const Json& object) {
+    if (!object.contains("bit_rate")) return std::nullopt;
+    const auto& value = object.at("bit_rate");
+    const auto parsed = value.is_string() ? number<std::uint64_t>(value.get<std::string>()) :
+        value.is_number_unsigned() ? std::optional<std::uint64_t>(value.get<std::uint64_t>()) :
+        std::nullopt;
+    return parsed && *parsed > 0 ? parsed : std::nullopt;
+}
+
 MediaTags tags(const Json& object) {
     MediaTags result;
     if (object.contains("tags") && object.at("tags").is_object()) {
@@ -252,8 +261,8 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
     ProcessRequest request{paths_.ffprobe, {
         "-v", "error", "-protocol_whitelist", "file,pipe",
         "-show_entries",
-        "stream=index,codec_type,codec_name,sample_rate,channels,channel_layout,duration:"
-        "stream_tags:format=format_name,duration:format_tags",
+        "stream=index,codec_type,codec_name,sample_rate,channels,channel_layout,duration,bit_rate:"
+        "stream_tags:format=format_name,duration,bit_rate:format_tags",
         "-of", "json", "-i", path_utf8(source)
     }, 30s};
     request.output_limit = 16 * 1024 * 1024;
@@ -284,6 +293,7 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
             audio.channel_layout = entry.value("channel_layout", std::string());
             audio.duration_seconds = duration(entry);
             audio.tags = tags(entry);
+            audio.bitrate_bps = bitrate(entry);
             if (audio.index < 0 || audio.codec.empty() || audio.codec == "unknown" ||
                 audio.sample_rate < 1 || audio.channels < 1) continue;
             if (check_decoding) {
@@ -305,6 +315,11 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
                 }
             }
             media.audio = std::move(audio);
+            media.bitrate_bps = media.audio.bitrate_bps;
+            if (!media.bitrate_bps && document.at("streams").size() == 1) {
+                media.bitrate_bps = bitrate(format);
+                media.bitrate_estimated = media.bitrate_bps.has_value();
+            }
             media.duration_seconds = media.audio.duration_seconds ?
                 media.audio.duration_seconds : format_duration;
             if (format_is_mp3(media)) {
@@ -314,6 +329,10 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
                     media.duration_seconds = media.mp3.duration_seconds;
                 } else {
                     media.duration_seconds.reset();
+                }
+                if (media.mp3.mode == Mp3BitrateMode::Cbr && media.mp3.bitrate_kbps) {
+                    media.bitrate_bps = static_cast<std::uint64_t>(*media.mp3.bitrate_kbps) * 1000;
+                    media.bitrate_estimated = false;
                 }
             }
             return media;
@@ -356,6 +375,18 @@ Inspection AudioProcessor::inspect(const SourceFile& source,
             inspection.diagnostic = {"same_bitrate", {}, {}};
             return inspection;
         }
+        if (!settings.force_upsampling) {
+            const auto source_bitrate = inspection.media->bitrate_bps;
+            if (source_bitrate && *source_bitrate <
+                static_cast<std::uint64_t>(settings.bitrate_kbps) * 1000) {
+                inspection.state = JobState::LowerBitrateSkipped;
+                inspection.diagnostic = {"lower_bitrate", {
+                    {"source", std::to_string(*source_bitrate / 1000)},
+                    {"target", std::to_string(settings.bitrate_kbps)}}, {}};
+                return inspection;
+            }
+            if (!source_bitrate) inspection.warnings.push_back({"bitrate_unknown", {}, {}});
+        }
         inspection.state = JobState::Ready;
         inspection.diagnostic = {"ready", {}, {}};
     } catch (const AudioError& error) {
@@ -374,6 +405,7 @@ ConversionResult AudioProcessor::convert(const Inspection& input,
                                          ProgressCallback progress) const {
     validate_settings(settings);
     ConversionResult result;
+    result.warnings = input.warnings;
     try {
         if (input.state != JobState::Ready || !input.media) {
             throw std::invalid_argument("Conversion requires a ready inspection");
