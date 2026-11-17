@@ -213,4 +213,25 @@ void SettingsStore::select() {
     fallback_ = true;
 }
 
+SettingsLoadResult SettingsStore::load() {
+    SettingsLoadResult result;
+    try {
+        select();
+        auto source = selected_;
+        if (fallback_ && !fs::exists(source) && fs::exists(application_directory_ / "config.ini")) {
+            source = application_directory_ / "config.ini";
+        }
+        if (fs::exists(source)) {
+            auto parsed = parse_settings(read_ini(source), source.parent_path());
+            result.settings = std::move(parsed.settings);
+            result.warnings = std::move(parsed.warnings);
+        }
+    } catch (const std::exception& error) {
+        result.warnings.push_back({"settings_read_failed", {}, error.what()});
+    }
+    result.path = selected_;
+    result.using_fallback = fallback_;
+    return result;
+}
+
 } // namespace audio_converter
