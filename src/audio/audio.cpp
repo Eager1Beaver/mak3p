@@ -6,6 +6,7 @@
 #include <taglib/mpegfile.h>
 #include <taglib/mpegheader.h>
 #include <taglib/tfilestream.h>
+#include <taglib/xingheader.h>
 
 #include <algorithm>
 #include <array>
@@ -147,6 +148,19 @@ void validate_settings(const AudioSettings& settings) {
     }
 }
 
+std::optional<int> select_output_bitrate(const AudioSettings& settings,
+                                       std::optional<std::uint64_t> source_bitrate_bps) {
+    validate_settings(settings);
+    if (settings.force_upsampling || !source_bitrate_bps) return settings.bitrate_kbps;
+    constexpr std::array rates{32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320};
+    const auto limit = std::min(*source_bitrate_bps,
+        static_cast<std::uint64_t>(settings.bitrate_kbps) * 1000);
+    const auto next = std::upper_bound(rates.begin(), rates.end(), limit,
+        [](std::uint64_t value, int rate) { return value < static_cast<std::uint64_t>(rate) * 1000; });
+    if (next == rates.begin()) return std::nullopt;
+    return *std::prev(next);
+}
+
 int output_channels(int source_channels, ChannelMode mode) {
     if (source_channels < 1) throw std::invalid_argument("Source channel count must be positive");
     switch (mode) {
@@ -195,6 +209,7 @@ Mp3Analysis scan_mp3(const fs::path& source, std::stop_token stop, Mp3Scan scope
     int sample_rate = 0;
     bool variable = false;
     double seconds = 0;
+    std::uint64_t audio_frames = 0;
     for (std::uint64_t frames = 0; (!bounded || frames < 1'000'000) && offset <= last; ++frames) {
         if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
         TagLib::MPEG::Header header(&file, offset, false);
@@ -202,9 +217,20 @@ Mp3Analysis scan_mp3(const fs::path& source, std::stop_token stop, Mp3Scan scope
             header.bitrate() <= 0 || header.sampleRate() <= 0 ||
             offset + header.frameLength() > file.length()) return {};
         if (frames == 0) {
+            file.seek(offset);
+            const TagLib::MPEG::XingHeader xing(file.readBlock(header.frameLength()));
+            if (xing.isValid() && xing.type() == TagLib::MPEG::XingHeader::Xing) {
+                // The leading Xing/Info frame stores timing data and may use a
+                // larger frame bitrate than the constant-rate audio that follows.
+                offset += header.frameLength();
+                continue;
+            }
+        }
+        if (audio_frames == 0) {
             bitrate = header.bitrate();
             sample_rate = header.sampleRate();
         }
+        ++audio_frames;
         if (sample_rate != header.sampleRate()) return {};
         variable = variable || header.bitrate() != bitrate;
         seconds += static_cast<double>(header.samplesPerFrame()) / header.sampleRate();
@@ -368,24 +394,26 @@ Inspection AudioProcessor::inspect(const SourceFile& source,
             return inspection;
         }
         const auto& audio = inspection.media->audio;
+        inspection.output_bitrate_kbps = select_output_bitrate(settings, inspection.media->bitrate_bps);
+        if (!inspection.output_bitrate_kbps) {
+            inspection.state = JobState::LowerBitrateSkipped;
+            inspection.diagnostic = {"lower_bitrate", {}, {}};
+            return inspection;
+        }
         if (mp3 && inspection.media->mp3.mode == Mp3BitrateMode::Cbr &&
-            inspection.media->mp3.bitrate_kbps == settings.bitrate_kbps &&
+            inspection.media->mp3.bitrate_kbps == inspection.output_bitrate_kbps &&
             output_channels(audio.channels, settings.channel_mode) == audio.channels) {
             inspection.state = JobState::SameBitrateSkipped;
             inspection.diagnostic = {"same_bitrate", {}, {}};
             return inspection;
         }
-        if (!settings.force_upsampling) {
-            const auto source_bitrate = inspection.media->bitrate_bps;
-            if (source_bitrate && *source_bitrate <
-                static_cast<std::uint64_t>(settings.bitrate_kbps) * 1000) {
-                inspection.state = JobState::LowerBitrateSkipped;
-                inspection.diagnostic = {"lower_bitrate", {
-                    {"source", std::to_string(*source_bitrate / 1000)},
-                    {"target", std::to_string(settings.bitrate_kbps)}}, {}};
-                return inspection;
-            }
-            if (!source_bitrate) inspection.warnings.push_back({"bitrate_unknown", {}, {}});
+        if (!settings.force_upsampling && !inspection.media->bitrate_bps) {
+            inspection.warnings.push_back({"bitrate_unknown", {}, {}});
+        }
+        if (*inspection.output_bitrate_kbps != settings.bitrate_kbps) {
+            inspection.warnings.push_back({"bitrate_adjusted", {
+                {"requested", std::to_string(settings.bitrate_kbps)},
+                {"effective", std::to_string(*inspection.output_bitrate_kbps)}}, {}});
         }
         inspection.state = JobState::Ready;
         inspection.diagnostic = {"ready", {}, {}};
@@ -411,6 +439,10 @@ ConversionResult AudioProcessor::convert(const Inspection& input,
             throw std::invalid_argument("Conversion requires a ready inspection");
         }
         if (input.settings != settings) throw AudioError({"settings_changed", {}, {}});
+        const auto bitrate = select_output_bitrate(settings, input.media->bitrate_bps);
+        if (!bitrate || input.output_bitrate_kbps != bitrate) {
+            throw AudioError({"settings_changed", {}, "The per-file output bitrate does not match its inspection"});
+        }
         if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
         source_unchanged(input);
         output.validate_temporary();
@@ -429,7 +461,7 @@ ConversionResult AudioProcessor::convert(const Inspection& input,
             "-filter_threads", "1", "-protocol_whitelist", "file,pipe",
             "-i", path_utf8(input.source.path), "-map", "0:" + std::to_string(input.media->audio.index),
             "-vn", "-sn", "-dn", "-map_metadata", "-1", "-map_chapters", "-1",
-            "-c:a", "libmp3lame", "-b:a", std::to_string(settings.bitrate_kbps) + "k",
+            "-c:a", "libmp3lame", "-b:a", std::to_string(*bitrate) + "k",
             "-ac", std::to_string(channels), "-ar", std::to_string(rate), "-threads:a", "1",
             "-id3v2_version", "3", "-write_id3v1", "0", "-progress", "pipe:1", "-nostats",
             "-f", "mp3", "-y", path_utf8(output.temporary_path())
@@ -445,7 +477,7 @@ ConversionResult AudioProcessor::convert(const Inspection& input,
         const auto converted = probe(output.temporary_path(), false, stop);
         if (converted.audio.codec != "mp3" || converted.audio.channels != channels ||
             converted.audio.sample_rate != rate || converted.mp3.mode != Mp3BitrateMode::Cbr ||
-            converted.mp3.bitrate_kbps != settings.bitrate_kbps) {
+            converted.mp3.bitrate_kbps != bitrate) {
             throw AudioError({"output_invalid", {}, "Unexpected MP3 bitrate, channel count, or sample rate"});
         }
         auto decode = decode_request(paths_.ffmpeg, output.temporary_path(), converted.audio.index);

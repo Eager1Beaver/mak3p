@@ -64,6 +64,7 @@ struct Inspection {
     std::uintmax_t source_size = 0;
     fs::file_time_type source_modified{};
     std::vector<Diagnostic> warnings;
+    std::optional<int> output_bitrate_kbps;
 };
 
 struct EnginePaths {
@@ -86,6 +87,10 @@ struct ConversionResult {
 };
 
 void validate_settings(const AudioSettings& settings);
+// Chooses a standard CBR rate within the target and known source bitrate.
+// No value means the source is below the minimum supported output rate.
+[[nodiscard]] std::optional<int> select_output_bitrate(
+    const AudioSettings& settings, std::optional<std::uint64_t> source_bitrate_bps);
 [[nodiscard]] int output_channels(int source_channels, ChannelMode mode);
 [[nodiscard]] int output_sample_rate(int source_rate);
 [[nodiscard]] Mp3Analysis analyze_mp3(const fs::path& source, std::stop_token stop = {});
