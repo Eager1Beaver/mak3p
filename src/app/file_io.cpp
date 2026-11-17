@@ -78,4 +78,34 @@ void ExclusiveFile::replace(const fs::path& destination) {
 }
 
 
+std::unique_ptr<ExclusiveFile> temporary_file(const fs::path& directory) {
+    static std::atomic<unsigned long long> sequence{0};
+    static const auto seed = std::random_device{}();
+    for (int attempt = 0; attempt < 128; ++attempt) {
+        const auto name = ".audio-settings-" + std::to_string(seed) + "-" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+            "-" + std::to_string(sequence.fetch_add(1)) + ".tmp";
+        try { return std::make_unique<ExclusiveFile>(directory / name); }
+        catch (const fs::filesystem_error& error) {
+            if (error.code() != std::errc::file_exists) throw;
+        }
+    }
+    throw std::runtime_error("Cannot allocate a temporary settings file");
+}
+
+bool writable_directory(const fs::path& directory) {
+    try { const auto probe = temporary_file(directory); return true; }
+    catch (const std::exception&) { return false; }
+}
+
+
+bool writable_existing_file(const fs::path& path) {
+    const auto handle = ::open(path.c_str(), O_WRONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (handle < 0) return false;
+    struct stat info{};
+    const bool regular = ::fstat(handle, &info) == 0 && S_ISREG(info.st_mode);
+    ::close(handle);
+    return regular;
+}
+
 } // namespace audio_converter::detail
