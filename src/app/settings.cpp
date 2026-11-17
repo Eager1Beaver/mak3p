@@ -177,4 +177,18 @@ SettingsResult read_settings(const fs::path& path) {
     }
 }
 
+fs::path executable_directory() {
+    return fs::read_symlink("/proc/self/exe").parent_path();
+}
+
+fs::path default_settings_directory() {
+    fs::path root;
+    if (const auto* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg && fs::path(xdg).is_absolute()) {
+        root = xdg;
+    } else if (const auto* home_directory = std::getenv("HOME"); home_directory && *home_directory) {
+        root = fs::path(home_directory) / ".config";
+    }
+    return root.empty() || !root.is_absolute() ? fs::path{} : root / "PortableAudioToMP3";
+}
+
 } // namespace audio_converter
