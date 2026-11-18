@@ -65,5 +65,6 @@
   "cli_row": "{path}: {status}",
   "bitrate_adjusted": "Output bitrate adjusted from the requested {requested} kbps to {effective} kbps to avoid increasing the source bitrate.",
   "cli_output_bitrate": "Output bitrate: {bitrate} kbps (CBR).",
-  "cli_version": "{app} {version}"
+  "cli_version": "{app} {version}",
+  "wavpack_hybrid": "Hybrid WavPack input will use its lossy audio stream. FFmpeg does not apply .wvc correction files."
 }
