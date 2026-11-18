@@ -7,6 +7,8 @@
 #include <taglib/mpegheader.h>
 #include <taglib/tfilestream.h>
 #include <taglib/xingheader.h>
+#include <taglib/wavpackfile.h>
+#include <taglib/wavpackproperties.h>
 
 #include <algorithm>
 #include <array>
@@ -388,6 +390,17 @@ Inspection AudioProcessor::inspect(const SourceFile& source,
         source_unchanged(inspection);
         const bool mp3 = format_is_mp3(media);
         inspection.media = std::move(media);
+        if (inspection.media->audio.codec == "wavpack") {
+            TagLib::FileStream stream(inspection.source.path.c_str(), true);
+            if (stream.isOpen()) {
+                TagLib::WavPack::File file(&stream, true, TagLib::AudioProperties::Fast);
+                const auto* properties = file.audioProperties();
+                if (file.isValid() && properties && !properties->isLossless()) {
+                    inspection.warnings.push_back({"wavpack_hybrid", {}, {}});
+                }
+            }
+            source_unchanged(inspection);
+        }
         if (mp3 && source.origin == ImportOrigin::FolderScan &&
             !settings.include_mp3_from_folders) {
             inspection.diagnostic = {"mp3_excluded", {}, {}};
