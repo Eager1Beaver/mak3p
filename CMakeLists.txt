@@ -111,12 +111,7 @@ if(AUDIO_CONVERTER_BUILD_GUI)
     audio_converter_warnings(audio_converter_gui)
     add_executable(Mak3P WIN32 src/main.cpp)
     target_link_libraries(Mak3P PRIVATE audio_converter_gui)
-    set_property(TARGET Mak3P APPEND PROPERTY LINK_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/documents/help.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/documents/licenses.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/documents/changelog.txt")
-    add_custom_command(TARGET Mak3P POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/resources/documents" "$<TARGET_FILE_DIR:Mak3P>/documents")
+    include(cmake/Documents.cmake)
 
     audio_converter_warnings(Mak3P)
 endif()
