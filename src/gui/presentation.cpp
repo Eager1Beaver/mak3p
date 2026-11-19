@@ -41,5 +41,24 @@ std::string phase_text(GuiPhase phase) {
     }
     return {};
 }
+RowText present_row(const JobSnapshot& row, std::size_t position, const AppSettings& settings) {
+    RowText view{row.job.id(), {}, {}, {}, {}, {}, row.job.progress(), row.progress_visible, false, false};
+    std::ostringstream number; number << std::setfill('0') << std::setw(2) << position;
+    view.name = number.str() + " · " + path_utf8(row.job.source().path.filename());
+    const auto na = text("gui_na");
+    auto decimal = [](double value, int precision) { std::ostringstream out; out << std::fixed << std::setprecision(precision) << value; return out.str(); };
+    std::string codec = na, rate = na, bitrate = na, channels = na, size = na, length = na;
+    if (row.media) {
+        codec = row.media->audio.codec;
+        std::transform(codec.begin(), codec.end(), codec.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        if (row.media->audio.sample_rate) rate = text("gui_khz", {{"value", decimal(row.media->audio.sample_rate / 1000.0, row.media->audio.sample_rate % 1000 ? 1 : 0)}});
+        if (row.media->bitrate_bps) bitrate = text("gui_kbps", {{"value", std::to_string(*row.media->bitrate_bps / 1000)}});
+        if (row.media->audio.channels == 1) channels = text("gui_mono");
+        else if (row.media->audio.channels == 2) channels = text("gui_stereo");
+        else if (row.media->audio.channels > 0) channels = text("gui_channel_count", {{"value", std::to_string(row.media->audio.channels)}});
+        const auto time = row.media->duration_seconds ? row.media->duration_seconds : row.media->audio.duration_seconds;
+        if (time) length = duration(*time);
+    }
+}
 
 } // namespace audio_converter::gui
