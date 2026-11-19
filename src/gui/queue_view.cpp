@@ -39,5 +39,10 @@ void QueueView::rows(std::vector<RowText> rows, bool editable) {
     }
     rows_ = std::move(rows); editable_ = editable; update_scrollbar(); if (changed) redraw();
 }
+void QueueView::resize(int x, int y, int w, int h) {
+    Fl_Group::resize(x, y, w, h);
+    scrollbar_->resize(x + w - metrics::scrollbar_width, y, metrics::scrollbar_width, h);
+    update_scrollbar();
+}
 
 } // namespace audio_converter::gui
