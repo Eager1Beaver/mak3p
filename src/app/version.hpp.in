@@ -1,0 +1,5 @@
+#pragma once
+namespace audio_converter {
+inline constexpr char application_version[] = "@PROJECT_VERSION@";
+inline constexpr char release_version[] = "v@PROJECT_VERSION_MAJOR@.@PROJECT_VERSION_MINOR@";
+}
