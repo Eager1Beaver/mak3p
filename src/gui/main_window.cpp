@@ -178,5 +178,10 @@ void MainWindow::choose_engine() {
     Fl_Native_File_Chooser picker(Fl_Native_File_Chooser::BROWSE_DIRECTORY); picker.title(text("gui_choose_engine").c_str());
     if (!picker.show()) controller_.select_engine(path_from_utf8(picker.filename()));
 }
+void MainWindow::drop(std::string_view payload) {
+    if (snapshot_.phase != GuiPhase::Idle) return;
+    try { (void)controller_.add(dropped_paths(payload)); }
+    catch (const std::exception& error) { fl_alert("%s", error.what()); }
+}
 
 } // namespace audio_converter::gui
