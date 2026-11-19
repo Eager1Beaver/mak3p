@@ -155,6 +155,14 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                     }
                     persist(); break;
                 }
+                case Operation::Window:
+                    settings.window = item.settings.window;
+                    if (engine) engine->configure(settings);
+                    persist(); break;
+                case Operation::Engine:
+                    if (engine) break;
+                    settings.engine_directory = item.paths.empty() ? fs::path{} : item.paths.front();
+                    initialize(); if (engine) persist(); break;
 
 }
 
