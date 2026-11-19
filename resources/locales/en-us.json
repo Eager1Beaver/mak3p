@@ -134,12 +134,12 @@
   "gui_choose_engine": "Choose FFmpeg folder…",
   "gui_engine_action": "Audio tools unavailable - click to choose a folder",
   "gui_document_failed": "The document could not be opened.",
-  "gui_release": "Release date: Unreleased",
+  "gui_release": "Release date: 19/11/2026",
   "gui_build": "{platform} · {bits}-bit",
   "gui_author": "Author: Ilia Golub",
   "gui_contacts": "Email: [TO BE ADDED]  |  GitHub: [TO BE ADDED]",
-  "gui_copyright": "© [author name], 2026",
-  "gui_files_filter": "Audio files\t*.{flac,ape,wv,wav,wave,mp4,m4a,dsf,ac3,aif,aiff,ogg,opus,wma,mp3}\nAll files\t*",
+  "gui_copyright": "© Ilia Golub, 2026",
+  "gui_files_filter": "Audio files\t*.{{flac,ape,wv,wav,wave,mp4,m4a,dsf,ac3,aif,aiff,ogg,opus,wma,mp3}}\nAll files\t*",
   "gui_notice": "Notice: {message}",
   "gui_help_intro": "Quick guide"
 }
