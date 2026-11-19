@@ -86,7 +86,11 @@ void QueueView::draw() {
 int QueueView::handle(int event) {
     const int usable = w() - (scrollbar_->visible() ? metrics::scrollbar_width : 0);
     const int index = (Fl::event_y() - y() + scrollbar_->value()) / metrics::row_height;
-    if (event == FL_DND_ENTER || event == FL_DND_DRAG || event == FL_DND_RELEASE) return editable_ ? 1 : 0;
+    if (event == FL_DND_ENTER || event == FL_DND_DRAG || event == FL_DND_RELEASE) {
+        if (!editable_) return 0;
+        Fl::belowmouse(this);
+        return 1;
+    }
     if (event == FL_DND_LEAVE) return 1;
     if (event == FL_PASTE) { if (editable_ && drop) drop(std::string_view(Fl::event_text(), Fl::event_length())); return 1; }
     if (event == FL_MOUSEWHEEL) { scrollbar_->value(std::clamp(scrollbar_->value() + Fl::event_dy() * 28, 0,
