@@ -1,5 +1,6 @@
 #pragma once
 #include "gui/queue_view.hpp"
+#include "gui/constrained_window.hpp"
 #include <FL/Fl_Double_Window.H>
 #include <FL/Fl_Box.H>
 #include <FL/Fl_Button.H>
@@ -8,7 +9,7 @@
 #include <FL/Fl_Menu_Button.H>
 
 namespace audio_converter::gui {
-class MainWindow : public Fl_Double_Window {
+class MainWindow : public ConstrainedWindow {
 public:
     explicit MainWindow(fs::path directory, std::optional<BatchBackend> backend = std::nullopt);
     ~MainWindow() override;
