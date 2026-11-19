@@ -17,8 +17,8 @@ namespace audio_converter {
 enum class ChannelMode { Auto, Stereo, Mono };
 
 struct AudioSettings {
-    int bitrate_kbps = 256;
-    ChannelMode channel_mode = ChannelMode::Auto;
+    int bitrate_kbps = 320;
+    ChannelMode channel_mode = ChannelMode::Stereo;
     bool include_mp3_from_folders = false;
     bool force_upsampling = false;
     bool operator==(const AudioSettings&) const = default;
@@ -97,7 +97,7 @@ void validate_settings(const AudioSettings& settings);
 
 class AudioProcessor {
 public:
-    explicit AudioProcessor(EnginePaths paths = {});
+    explicit AudioProcessor(EnginePaths paths = {}, std::stop_token stop = {});
     [[nodiscard]] const std::string& ffmpeg_version() const noexcept { return ffmpeg_version_; }
     [[nodiscard]] const std::string& ffprobe_version() const noexcept { return ffprobe_version_; }
 
