@@ -140,7 +140,21 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                     }
                     engine->inspect_pending_async(); phase(GuiPhase::Checking); break;
                 }
-
+                case Operation::Remove: if (engine) (void)engine->remove(item.id); break;
+                case Operation::Clear:
+                    if (engine) engine->clear();
+                    { std::lock_guard lock(mutex_); state_.has_run = false; state_.run_ids.clear(); }
+                    break;
+                case Operation::Configure: {
+                    validate_settings(item.settings);
+                    const auto window = settings.window;
+                    settings = item.settings; settings.window = window;
+                    if (engine) {
+                        engine->configure(settings);
+                        if (engine->snapshot().counts.checking) { engine->inspect_pending_async(); phase(GuiPhase::Checking); }
+                    }
+                    persist(); break;
+                }
 
 }
 
