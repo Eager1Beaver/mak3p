@@ -12,8 +12,6 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <fstream>
-#include <iterator>
 #include <sstream>
 
 namespace audio_converter::gui {
@@ -253,16 +251,15 @@ void MainWindow::refresh() {
     }
 }
 void MainWindow::open_document(const char* name) {
-    const auto path = directory_ / "documents" / name;
-    std::ifstream input(path, std::ios::binary);
-    if (!input) { fl_alert("%s", text("gui_document_failed").c_str()); return; }
-    const auto content = std::string(std::istreambuf_iterator<char>(input), {});
     auto window = std::make_unique<ConstrainedWindow>(metrics::help_width, metrics::help_height, nullptr, true);
-    window->copy_label(text(std::string_view(name) == "licenses.txt" ? "gui_license" : "gui_changelog").c_str());
+    window->copy_label(text(std::string_view(name) == "licenses.html" ? "gui_license" : "gui_changelog").c_str());
     auto* body = new Fl_Help_View(metrics::margin, metrics::margin,
                                   metrics::help_width - 2 * metrics::margin, metrics::help_height - 64);
-    body->textsize(metrics::font_size);
-    body->value(("<p>" + escape_html(content) + "</p>").c_str());
+    body->textfont(metrics::font_face); body->textsize(metrics::font_size);
+    body->textcolor(colors::text); body->color(colors::background);
+    const auto path = (directory_ / "documents" / name).generic_u8string();
+    if (body->load(reinterpret_cast<const char*>(path.c_str())) != 0)
+        body->value(("<p>" + escape_html(text("gui_document_failed")) + "</p>").c_str());
     auto* close = new Fl_Button(metrics::help_width - 104, metrics::help_height - 42, 92, 28);
     close->copy_label(text("gui_close").c_str());
     close->callback([](Fl_Widget* widget, void*) { widget->window()->hide(); });
@@ -277,7 +274,9 @@ void MainWindow::dialog(bool about) {
     const int height = about ? metrics::about_height : metrics::help_height;
     auto window = std::make_unique<ConstrainedWindow>(width, height, nullptr, true);
     window->copy_label(text(about ? "gui_about" : "gui_help").c_str()); window->set_non_modal();
-    auto* body = new Fl_Help_View(12, 12, width - 24, height - 64); body->textsize(metrics::font_size);
+    auto* body = new Fl_Help_View(metrics::margin, metrics::margin, width - 2 * metrics::margin, height - 64);
+    body->textfont(metrics::font_face); body->textsize(metrics::font_size);
+    body->textcolor(colors::text); body->color(colors::background);
     std::string content;
     if (about) {
 #ifdef _WIN32
@@ -292,21 +291,21 @@ void MainWindow::dialog(bool about) {
             text("gui_build", {{"platform", platform}, {"bits", std::to_string(sizeof(void*) * 8)}}) + "<br>" + text("gui_release") +
             "</td></tr></table><p>" + escape_html(text("gui_author")) + "</p><p>" + escape_html(text("gui_contacts")) + "</p>";
     } else {
-        std::ifstream input(directory_ / "documents" / "help.txt", std::ios::binary);
-        if (input) { content = "<h2>" + std::string(application_name) + "</h2><p>" + escape_html(std::string(std::istreambuf_iterator<char>(input), {})) + "</p>"; }
-        else content = escape_html(text("gui_document_failed"));
+        const auto path = (directory_ / "documents" / "help.html").generic_u8string();
+        if (body->load(reinterpret_cast<const char*>(path.c_str())) != 0)
+            body->value(("<p>" + escape_html(text("gui_document_failed")) + "</p>").c_str());
         auto* copyright = new Fl_Box(12, height - 42, width - 128, 28);
         copyright->copy_label(text("gui_copyright").c_str()); copyright->labelsize(metrics::small_font_size);
         copyright->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
     }
-    body->value(content.c_str());
+    if (about) body->value(content.c_str());
     if (about) {
         auto* changelog = new Fl_Button(12, height - 42, 112, 28); changelog->copy_label(text("gui_changelog").c_str());
         changelog->box(FL_FLAT_BOX); changelog->labelcolor(colors::accent);
-        changelog->callback([](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->open_document("changelog.txt"); }, this);
+        changelog->callback([](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->open_document("changelog.html"); }, this);
         auto* license = new Fl_Button(width - 204, height - 42, 88, 28); license->copy_label(text("gui_license").c_str());
         license->box(FL_FLAT_BOX); license->labelcolor(colors::accent);
-        license->callback([](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->open_document("licenses.txt"); }, this);
+        license->callback([](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->open_document("licenses.html"); }, this);
     }
     auto* close = new Fl_Button(width - 104, height - 42, 92, 28); close->copy_label(text("gui_close").c_str());
     close->callback([](Fl_Widget* widget, void*) { widget->window()->hide(); });
