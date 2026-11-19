@@ -124,5 +124,12 @@ void MainWindow::layout() {
     notice_->resize(margin, bottom + notice_offset, width, hint_height); engine_->resize(margin, bottom + engine_action_offset, width, 24);
     start_->resize(margin, h() - margin - primary_height, width, primary_height);
 }
+void MainWindow::resize(int x, int y, int w, int h) {
+    Fl_Double_Window::resize(x, y, std::max(w, metrics::minimum_width), std::max(h, metrics::minimum_height)); layout();
+    if (!maximize_active() && !fullscreen_active()) {
+        normal_size_ = {this->w(), this->h()};
+        resized_ = std::chrono::steady_clock::now(); resize_pending_ = true;
+    }
+}
 
 } // namespace audio_converter::gui
