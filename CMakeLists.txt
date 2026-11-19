@@ -106,7 +106,7 @@ if(AUDIO_CONVERTER_BUILD_GUI)
     )
     FetchContent_MakeAvailable(fltk)
 
-    add_library(audio_converter_gui STATIC src/gui/queue_view.cpp src/gui/main_window.cpp)
+    add_library(audio_converter_gui STATIC src/gui/constrained_window.cpp src/gui/queue_view.cpp src/gui/main_window.cpp)
     target_link_libraries(audio_converter_gui PUBLIC audio_converter_batch fltk::fltk)
     audio_converter_warnings(audio_converter_gui)
     add_executable(Mak3P WIN32 src/main.cpp)
