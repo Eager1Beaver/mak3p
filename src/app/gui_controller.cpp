@@ -118,6 +118,29 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                     converting = false; phase(GuiPhase::Idle); publish();
                 }
             }
+            std::optional<Command> command;
+            {
+                std::unique_lock lock(mutex_);
+                if (commands_.empty()) condition_.wait_for(lock, std::chrono::milliseconds(30));
+                if (!commands_.empty()) { command = std::move(commands_.front()); commands_.pop_front(); }
+            }
+            if (!command || stop.stop_requested()) continue;
+            try {
+                auto& item = *command;
+                switch (item.operation) {
+                case Operation::Add: {
+                    if (!engine) break;
+                    phase(GuiPhase::Importing); publish();
+                    auto discovered = discover_sources(item.paths, settings.recursive_folders, stop);
+                    for (auto& warning : discovered.warnings) notice(std::move(warning));
+                    for (const auto& source : discovered.files) {
+                        if (stop.stop_requested()) break;
+                        try { (void)engine->add(source.path, source.origin); }
+                        catch (const std::exception& error) { notice({"gui_import_failed", {}, error.what()}); }
+                    }
+                    engine->inspect_pending_async(); phase(GuiPhase::Checking); break;
+                }
+
 
 }
 
