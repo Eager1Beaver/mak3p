@@ -18,5 +18,11 @@ std::string shortened(std::string value, int width) {
     return value + "…";
 }
 }
+QueueView::QueueView(int x, int y, int w, int h) : Fl_Group(x, y, w, h) {
+    scrollbar_ = new Fl_Scrollbar(x + w - metrics::scrollbar_width, y, metrics::scrollbar_width, h);
+    scrollbar_->type(FL_VERTICAL); scrollbar_->step(metrics::row_height / 2);
+    scrollbar_->callback([](Fl_Widget*, void* data) { static_cast<QueueView*>(data)->redraw(); }, this);
+    end();
+}
 
 } // namespace audio_converter::gui
