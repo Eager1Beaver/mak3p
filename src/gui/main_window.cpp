@@ -256,6 +256,47 @@ void MainWindow::open_document(const char* name) {
     char error_message[1024]{};
     if (!fl_open_uri(uri.c_str(), error_message, sizeof error_message)) fl_alert("%s\n%s", text("gui_document_failed").c_str(), error_message);
 }
+void MainWindow::dialog(bool about) {
+    const int width = about ? metrics::about_width : metrics::help_width;
+    const int height = about ? metrics::about_height : metrics::help_height;
+    auto window = std::make_unique<Fl_Double_Window>(width, height);
+    window->copy_label(text(about ? "gui_about" : "gui_help").c_str()); window->set_non_modal();
+    auto* body = new Fl_Help_View(12, 12, width - 24, height - 64); body->textsize(metrics::font_size);
+    std::string content;
+    if (about) {
+#ifdef _WIN32
+        const auto platform = "Windows";
+#elif defined(__APPLE__)
+        const auto platform = "macOS";
+#else
+        const auto platform = "Linux";
+#endif
+        content = "<table width=100%><tr><td><h2>" + std::string(application_name) +
+            "</h2></td><td align=right>" + release_version + "<br>" +
+            text("gui_build", {{"platform", platform}, {"bits", std::to_string(sizeof(void*) * 8)}}) + "<br>" + text("gui_release") +
+            "</td></tr></table><p>" + escape_html(text("gui_author")) + "</p><p>" + escape_html(text("gui_contacts")) + "</p>";
+    } else {
+        std::ifstream input(directory_ / "documents" / "help.txt", std::ios::binary);
+        if (input) { content = "<h2>" + std::string(application_name) + "</h2><p>" + escape_html(std::string(std::istreambuf_iterator<char>(input), {})) + "</p>"; }
+        else content = escape_html(text("gui_document_failed"));
+        auto* copyright = new Fl_Box(12, height - 42, width - 128, 28);
+        copyright->copy_label(text("gui_copyright").c_str()); copyright->labelsize(metrics::small_font_size);
+        copyright->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+    }
+    body->value(content.c_str());
+    if (about) {
+        auto* changelog = new Fl_Button(12, height - 42, 112, 28); changelog->copy_label(text("gui_changelog").c_str());
+        changelog->box(FL_FLAT_BOX); changelog->labelcolor(colors::accent);
+        changelog->callback([](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->open_document("changelog.txt"); }, this);
+        auto* license = new Fl_Button(width - 204, height - 42, 88, 28); license->copy_label(text("gui_license").c_str());
+        license->box(FL_FLAT_BOX); license->labelcolor(colors::accent);
+        license->callback([](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->open_document("licenses.txt"); }, this);
+    }
+    auto* close = new Fl_Button(width - 104, height - 42, 92, 28); close->copy_label(text("gui_close").c_str());
+    close->callback([](Fl_Widget* widget, void*) { widget->window()->hide(); });
+    window->end(); window->show();
+    std::erase_if(dialogs_, [](const auto& item) { return !item->shown(); }); dialogs_.push_back(std::move(window));
+}
 
 
 } // namespace audio_converter::gui
