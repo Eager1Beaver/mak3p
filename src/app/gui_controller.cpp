@@ -54,6 +54,29 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
         state_.batch = std::move(batch); state_.settings = settings;
         state_.can_start = state_.phase == GuiPhase::Idle && (state_.batch.counts.ready > 0 || state_.batch.counts.cancelled > 0);
     };
+    auto initialize = [&] {
+        phase(GuiPhase::Initializing);
+        try {
+            auto processor = [&] {
+                const auto paths = discover_engine(directory, settings.engine_directory);
+                try { return std::make_shared<AudioProcessor>(paths, stop); }
+                catch (const AudioError&) {
+                    if (settings.engine_directory.empty() || stop.stop_requested()) throw;
+                    // An explicitly selected installation can recover from a broken bundled engine.
+                    return std::make_shared<AudioProcessor>(EnginePaths{
+                        settings.engine_directory / paths.ffmpeg.filename(),
+                        settings.engine_directory / paths.ffprobe.filename()}, stop);
+                }
+            };
+            auto work = backend ? *backend : batch_backend(processor());
+            engine = std::make_unique<BatchEngine>(std::move(work), directory);
+            engine->configure(settings);
+            {
+                std::lock_guard lock(mutex_);
+                std::erase_if(state_.notices, [](const auto& item) {
+                    return item.key.starts_with("engine_") || item.key == "missing_encoder" || item.key == "process_timeout";
+                });
+            }
 
 }
 
