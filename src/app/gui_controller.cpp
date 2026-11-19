@@ -177,9 +177,14 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
             catch (const std::exception& error) { notice({"gui_operation_failed", {}, error.what()}); phase(engine ? GuiPhase::Idle : GuiPhase::EngineMissing); }
             publish();
         }
-
-                
-
+        phase(GuiPhase::Closing);
+        if (engine) { engine->cancel(); engine->wait(); }
+        // Apply the last queued dimensions before the final serialized save.
+        { std::lock_guard lock(mutex_); for (const auto& item : commands_)
+            if (item.operation == Operation::Window) settings.window = item.settings.window; }
+        persist(); publish();
+    } catch (const std::exception& error) { notice({"gui_operation_failed", {}, error.what()}); }
+    phase(GuiPhase::Closed);
 }
 
 } // namespace audio_converter
