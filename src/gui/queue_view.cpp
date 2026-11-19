@@ -83,5 +83,29 @@ void QueueView::draw() {
         fl_draw(text("gui_empty").c_str(), x() + 12, y() + 12, usable - 24, h() - 24, FL_ALIGN_CENTER | FL_ALIGN_WRAP); }
     draw_children(); fl_color(colors::border); fl_rect(x(), y(), w(), h()); fl_pop_clip();
 }
+int QueueView::handle(int event) {
+    const int usable = w() - (scrollbar_->visible() ? metrics::scrollbar_width : 0);
+    const int index = (Fl::event_y() - y() + scrollbar_->value()) / metrics::row_height;
+    if (event == FL_DND_ENTER || event == FL_DND_DRAG || event == FL_DND_RELEASE) return editable_ ? 1 : 0;
+    if (event == FL_DND_LEAVE) return 1;
+    if (event == FL_PASTE) { if (editable_ && drop) drop(std::string_view(Fl::event_text(), Fl::event_length())); return 1; }
+    if (event == FL_MOUSEWHEEL) { scrollbar_->value(std::clamp(scrollbar_->value() + Fl::event_dy() * 28, 0,
+        std::max(0, static_cast<int>(rows_.size()) * metrics::row_height - h()))); redraw(); return 1; }
+    if (index >= 0 && static_cast<std::size_t>(index) < rows_.size() && Fl::event_x() < x() + usable) {
+        if (event == FL_PUSH && Fl::event_button() == FL_LEFT_MOUSE && Fl::event_x() >= x() + usable - 32) {
+            if (editable_ && remove) remove(rows_[index].id);
+            return 1;
+        }
+        if (event == FL_MOVE || event == FL_ENTER) {
+            const auto value = Fl::event_x() >= x() + usable - 32 ? text("gui_remove") : rows_[index].tooltip;
+            if (hover_ != value) { Fl_Tooltip::exit(this); hover_ = value;
+                Fl::belowmouse(this);
+                Fl_Tooltip::enter_area(this, 0, index * metrics::row_height - scrollbar_->value(), usable, metrics::row_height, hover_.c_str()); }
+            return 1;
+        }
+    }
+    if (event == FL_LEAVE) { Fl_Tooltip::exit(this); hover_.clear(); }
+    return Fl_Group::handle(event);
+}
 
 } // namespace audio_converter::gui
