@@ -183,5 +183,11 @@ void MainWindow::drop(std::string_view payload) {
     try { (void)controller_.add(dropped_paths(payload)); }
     catch (const std::exception& error) { fl_alert("%s", error.what()); }
 }
+int MainWindow::handle(int event) {
+    if (event == FL_DND_ENTER || event == FL_DND_DRAG || event == FL_DND_RELEASE) return snapshot_.phase == GuiPhase::Idle ? 1 : 0;
+    if (event == FL_DND_LEAVE) return 1;
+    if (event == FL_PASTE) { drop(std::string_view(Fl::event_text(), Fl::event_length())); return 1; }
+    return Fl_Double_Window::handle(event);
+}
 
 } // namespace audio_converter::gui
