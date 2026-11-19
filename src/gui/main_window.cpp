@@ -131,5 +131,18 @@ void MainWindow::resize(int x, int y, int w, int h) {
         resized_ = std::chrono::steady_clock::now(); resize_pending_ = true;
     }
 }
+void MainWindow::populate(const AppSettings& settings) {
+    const auto found = std::find(std::begin(rates), std::end(rates), settings.audio.bitrate_kbps);
+    bitrate_->value(static_cast<int>(found - std::begin(rates)));
+    channels_->value(settings.audio.channel_mode == ChannelMode::Stereo ? 0 : settings.audio.channel_mode == ChannelMode::Mono ? 1 : 2);
+    output_->value(settings.output_mode == OutputMode::SameAsSource ? 0 : 1);
+    worker_values_ = worker_options(std::thread::hardware_concurrency(), settings.workers); workers_->clear();
+    for (auto value : worker_values_) workers_->add(value ? std::to_string(value).c_str() : text("gui_auto").c_str());
+    const auto selected = std::find(worker_values_.begin(), worker_values_.end(), settings.workers);
+    workers_->value(selected == worker_values_.end() ? 0 : static_cast<int>(selected - worker_values_.begin()));
+    include_->value(settings.audio.include_mp3_from_folders); force_->value(settings.audio.force_upsampling); log_->value(settings.logging_enabled);
+    output_->replace(1, settings.output_mode == OutputMode::CustomDirectory ? path_utf8(settings.custom_output_directory.filename()).c_str() : text("gui_choose_folder").c_str());
+    output_->copy_tooltip((settings.custom_output_directory.empty() ? text("gui_source_folders") : path_utf8(settings.custom_output_directory)).c_str());
+}
 
 } // namespace audio_converter::gui
