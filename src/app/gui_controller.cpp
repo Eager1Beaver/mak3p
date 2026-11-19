@@ -77,6 +77,18 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                     return item.key.starts_with("engine_") || item.key == "missing_encoder" || item.key == "process_timeout";
                 });
             }
+            phase(GuiPhase::Idle);
+        } catch (const AudioError& error) { notice(error.diagnostic()); phase(GuiPhase::EngineMissing); }
+        publish();
+    };
+    try {
+        auto loaded = store.load(); settings = loaded.settings;
+        for (auto& warning : loaded.warnings) notice(std::move(warning));
+        const auto cpu = std::thread::hardware_concurrency();
+        if (settings.workers && cpu && settings.workers > cpu) {
+            settings.workers = cpu; notice({"gui_workers_clamped", {{"count", std::to_string(cpu)}}, {}});
+        }
+
 
 }
 
