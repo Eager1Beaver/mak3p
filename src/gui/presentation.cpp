@@ -71,7 +71,21 @@ RowText present_row(const JobSnapshot& row, std::size_t position, const AppSetti
     case JobState::Cancelled: key = "gui_status_cancelled"; break;
     default: key = "gui_status_skipped"; view.warning = true; break;
     }
-
+    view.status = text(key);
+    if (row.job.state() == JobState::Converting && row.job.progress())
+        view.status = std::to_string(static_cast<int>(*row.job.progress() * 100)) + "%";
+    view.tooltip = path_utf8(row.job.source().path) + "\n" + view.properties + "\n\n" + message(row.diagnostic);
+    if (!row.diagnostic.technical_detail.empty()) view.tooltip += "\n" + row.diagnostic.technical_detail;
+    for (const auto& warning : row.warnings) {
+        view.warning = true; view.tooltip += "\n\n" + message(warning);
+        if (!warning.technical_detail.empty()) view.tooltip += "\n" + warning.technical_detail;
+    }
+    if (row.media && row.media->audio.channels == 1 && settings.audio.channel_mode == ChannelMode::Mono)
+        { view.warning = true; view.tooltip += "\n\n" + text("gui_already_mono"); }
+    if (row.output_bitrate_kbps) view.tooltip += "\n" + text("cli_output_bitrate", {{"bitrate", std::to_string(*row.output_bitrate_kbps)}});
+    if (row.job.output()) view.tooltip += "\n" + text("cli_output", {{"path", path_utf8(*row.job.output())}});
+    if (row.progress_visible) view.remaining = row.eta_seconds ? text("gui_remaining", {{"time", duration(*row.eta_seconds)}}) : text("gui_eta_unknown");
+    return view;
 }
 
 } // namespace audio_converter::gui
