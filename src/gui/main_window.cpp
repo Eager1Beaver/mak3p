@@ -160,5 +160,15 @@ void MainWindow::settings_changed(Fl_Widget* source) {
     settings.audio.include_mp3_from_folders = include_->value(); settings.audio.force_upsampling = force_->value(); settings.logging_enabled = log_->value();
     if (!controller_.configure(settings)) populate(snapshot_.settings);
 }
+void MainWindow::choose(bool folders) {
+    if (snapshot_.phase != GuiPhase::Idle) return;
+    Fl_Native_File_Chooser picker(folders ? Fl_Native_File_Chooser::BROWSE_MULTI_DIRECTORY : Fl_Native_File_Chooser::BROWSE_MULTI_FILE);
+    const auto title = text(folders ? "gui_select_folders" : "gui_select_files"); picker.title(title.c_str());
+    const auto filter = text("gui_files_filter"); if (!folders) picker.filter(filter.c_str());
+    const int result = picker.show();
+    if (result < 0) { fl_alert("%s", picker.errmsg()); return; } if (result > 0) return;
+    std::vector<fs::path> paths; for (int i = 0; i < picker.count(); ++i) paths.push_back(path_from_utf8(picker.filename(i)));
+    (void)controller_.add(std::move(paths));
+}
 
 } // namespace audio_converter::gui
