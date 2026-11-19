@@ -189,5 +189,9 @@ int MainWindow::handle(int event) {
     if (event == FL_PASTE) { drop(std::string_view(Fl::event_text(), Fl::event_length())); return 1; }
     return Fl_Double_Window::handle(event);
 }
+void MainWindow::request_close() {
+    if (closing_) return;
+    closing_ = true; controller_.window_size(normal_size_.width, normal_size_.height); controller_.close(); refresh();
+}
 
 } // namespace audio_converter::gui
