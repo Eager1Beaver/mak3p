@@ -251,12 +251,12 @@ Mp3Analysis analyze_mp3(const fs::path& source, std::stop_token stop) {
     return scan_mp3(source, stop, Mp3Scan::BoundedInput);
 }
 
-AudioProcessor::AudioProcessor(EnginePaths paths) : paths_(std::move(paths)) {
+AudioProcessor::AudioProcessor(EnginePaths paths, std::stop_token stop) : paths_(std::move(paths)) {
     try {
         paths_.ffmpeg = resolve_executable(paths_.ffmpeg);
         paths_.ffprobe = resolve_executable(paths_.ffprobe);
-        auto ffmpeg = run_process({paths_.ffmpeg, {"-version"}, 10s});
-        auto ffprobe = run_process({paths_.ffprobe, {"-version"}, 10s});
+        auto ffmpeg = run_process({paths_.ffmpeg, {"-version"}, 10s}, stop);
+        auto ffprobe = run_process({paths_.ffprobe, {"-version"}, 10s}, stop);
         checked(ffmpeg, "engine_probe_failed");
         checked(ffprobe, "engine_probe_failed");
         if (!ffmpeg.standard_output.starts_with("ffmpeg version ") ||
@@ -265,7 +265,7 @@ AudioProcessor::AudioProcessor(EnginePaths paths) : paths_(std::move(paths)) {
         }
         ffmpeg_version_ = ffmpeg.standard_output.substr(0, ffmpeg.standard_output.find('\n'));
         ffprobe_version_ = ffprobe.standard_output.substr(0, ffprobe.standard_output.find('\n'));
-        auto encoders = run_process({paths_.ffmpeg, {"-hide_banner", "-encoders"}, 10s});
+        auto encoders = run_process({paths_.ffmpeg, {"-hide_banner", "-encoders"}, 10s}, stop);
         checked(encoders, "engine_probe_failed");
         bool lame = false;
         std::istringstream lines(encoders.standard_output);
