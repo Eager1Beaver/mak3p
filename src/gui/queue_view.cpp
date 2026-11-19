@@ -29,5 +29,15 @@ void QueueView::update_scrollbar() {
     scrollbar_->value(std::clamp(scrollbar_->value(), 0, std::max(0, total - h())), h(), 0, std::max(h(), total));
     if (total > h()) scrollbar_->show(); else scrollbar_->hide();
 }
+void QueueView::rows(std::vector<RowText> rows, bool editable) {
+    bool changed = editable != editable_ || rows.size() != rows_.size();
+    if (!changed) for (std::size_t i = 0; i < rows.size(); ++i) {
+        const auto& a = rows[i]; const auto& b = rows_[i];
+        if (a.id != b.id || a.name != b.name || a.properties != b.properties || a.status != b.status ||
+            a.remaining != b.remaining || a.progress != b.progress || a.warning != b.warning || a.failed != b.failed ||
+            a.progress_visible != b.progress_visible) { changed = true; break; }
+    }
+    rows_ = std::move(rows); editable_ = editable; update_scrollbar(); if (changed) redraw();
+}
 
 } // namespace audio_converter::gui
