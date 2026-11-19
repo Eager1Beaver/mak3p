@@ -239,6 +239,23 @@ void MainWindow::refresh() {
         resize_pending_ = false; controller_.window_size(normal_size_.width, normal_size_.height);
     }
 }
+void MainWindow::open_document(const char* name) {
+    const auto path = directory_ / "documents" / name;
+    std::error_code error;
+    if (!fs::is_regular_file(path, error)) { fl_alert("%s", text("gui_document_failed").c_str()); return; }
+    std::string uri = "file://";
+#ifdef _WIN32
+    uri += '/';
+#endif
+    auto document_path = path_utf8(path);
+    std::replace(document_path.begin(), document_path.end(), '\\', '/');
+    for (unsigned char c : document_path) {
+        if (std::isalnum(c) || c == '/' || c == ':' || c == '-' || c == '_' || c == '.' || c == '~') uri += static_cast<char>(c);
+        else { const char* hex = "0123456789ABCDEF"; uri += '%'; uri += hex[c >> 4]; uri += hex[c & 15]; }
+    }
+    char error_message[1024]{};
+    if (!fl_open_uri(uri.c_str(), error_message, sizeof error_message)) fl_alert("%s\n%s", text("gui_document_failed").c_str(), error_message);
+}
 
 
 } // namespace audio_converter::gui
