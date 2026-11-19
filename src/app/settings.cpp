@@ -76,6 +76,10 @@ void validate_settings(const AppSettings& settings) {
     if (settings.output_mode == OutputMode::CustomDirectory &&
         settings.custom_output_directory.empty()) throw AudioError({"invalid_output_directory", {}, {}});
     (void)utf8_path(path_utf8(settings.custom_output_directory));
+    (void)utf8_path(path_utf8(settings.engine_directory));
+    if (settings.window.width < gui::metrics::minimum_width || settings.window.height < gui::metrics::minimum_height ||
+        settings.window.width > 16384 || settings.window.height > 16384)
+        throw std::invalid_argument("Window dimensions are outside the supported range");
 }
 
 std::size_t worker_count(unsigned requested, unsigned logical_processors, std::size_t jobs) {
@@ -153,7 +157,22 @@ SettingsResult parse_settings(std::string_view ini, const fs::path& base_directo
                 if (count > maximum_worker_override) throw AudioError({"invalid_workers", {}, {}});
                 result.settings.workers = count;
             } else if (key == "logging.enabled") result.settings.logging_enabled = boolean(value);
-            else warn("Unknown key: " + key);
+            else if (key == "window.width" || key == "window.height") {
+                const auto size = integer(value);
+                const unsigned minimum = key == "window.width" ? gui::metrics::minimum_width : gui::metrics::minimum_height;
+                if (size < minimum || size > 16384) throw std::invalid_argument("Invalid window size");
+                if (key == "window.width") result.settings.window.width = static_cast<int>(size);
+                else result.settings.window.height = static_cast<int>(size);
+            } else if (key == "engine.directory") {
+                if (value.starts_with('"')) {
+                    std::istringstream quoted(value);
+                    if (!(quoted >> std::quoted(value)) || !(quoted >> std::ws).eof())
+                        throw std::invalid_argument("Malformed engine path");
+                }
+                auto path = utf8_path(value);
+                if (!path.empty() && path.is_relative()) path = fs::absolute(base_directory / path);
+                result.settings.engine_directory = path.lexically_normal();
+            } else warn("Unknown key: " + key);
         } catch (const std::exception& error) { warn(key + ": " + error.what()); }
     }
     if (result.settings.output_mode == OutputMode::CustomDirectory &&
@@ -177,7 +196,9 @@ std::string serialize_settings(const AppSettings& settings) {
         << "\n\n[import]\ninclude_mp3_from_folders=" << settings.audio.include_mp3_from_folders
         << "\nrecursive_folders=" << settings.recursive_folders
         << "\n\n[processing]\nworkers=" << (settings.workers ? std::to_string(settings.workers) : "auto")
-        << "\n\n[logging]\nenabled=" << settings.logging_enabled << '\n';
+        << "\n\n[logging]\nenabled=" << settings.logging_enabled
+        << "\n\n[window]\nwidth=" << settings.window.width << "\nheight=" << settings.window.height
+        << "\n\n[engine]\ndirectory=" << std::quoted(path_utf8(settings.engine_directory)) << '\n';
     return out.str();
 }
 
