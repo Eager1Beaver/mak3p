@@ -86,4 +86,21 @@ ImportResult discover_sources(const std::vector<fs::path>& paths, bool recursive
     return result;
 }
 
+EnginePaths discover_engine(const fs::path& directory, const fs::path& selected) {
+#ifdef _WIN32
+    const char* ffmpeg = "ffmpeg.exe";
+    const char* ffprobe = "ffprobe.exe";
+#else
+    const char* ffmpeg = "ffmpeg";
+    const char* ffprobe = "ffprobe";
+#endif
+    for (const auto& candidate : {directory, directory / "bin", selected}) {
+        if (candidate.empty()) continue;
+        std::error_code error;
+        if (fs::is_regular_file(candidate / ffmpeg, error) && fs::is_regular_file(candidate / ffprobe, error))
+            return {candidate / ffmpeg, candidate / ffprobe};
+    }
+    return {ffmpeg, ffprobe};
+}
+
 } // namespace audio_converter
