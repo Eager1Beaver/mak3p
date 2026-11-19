@@ -16,16 +16,21 @@ std::string message(const Diagnostic& diagnostic) {
     std::string result;
     std::size_t position = 0;
     while (position < format.size()) {
-        const auto opening = format.find('{', position);
-        if (opening == std::string::npos) {
-            result += format.substr(position);
-            break;
+        const char current = format[position];
+        if (current == '{' && position + 1 < format.size() && format[position + 1] == '{') {
+            result += '{'; position += 2;
+        } else if (current == '}' && position + 1 < format.size() && format[position + 1] == '}') {
+            result += '}'; position += 2;
+        } else if (current == '{') {
+            const auto closing = format.find('}', position + 1);
+            if (closing == std::string::npos) throw std::logic_error("Invalid message placeholder");
+            result += diagnostic.arguments.at(format.substr(position + 1, closing - position - 1));
+            position = closing + 1;
+        } else if (current == '}') {
+            throw std::logic_error("Unescaped closing brace in message");
+        } else {
+            result += current; ++position;
         }
-        result += format.substr(position, opening - position);
-        const auto closing = format.find('}', opening);
-        if (closing == std::string::npos) throw std::logic_error("Invalid message placeholder");
-        result += diagnostic.arguments.at(format.substr(opening + 1, closing - opening - 1));
-        position = closing + 1;
     }
     return result;
 }
