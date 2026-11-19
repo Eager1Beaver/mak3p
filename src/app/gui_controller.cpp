@@ -48,9 +48,10 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
         state_.notices.push_back(std::move(value));
     };
     auto persist = [&] { for (auto& warning : store.save(settings)) notice(std::move(warning)); };
-    auto publish = [&] {
+    auto publish = [&](std::optional<GuiPhase> next_phase = std::nullopt) {
         auto batch = engine ? engine->snapshot() : BatchSnapshot{};
         std::lock_guard lock(mutex_);
+        if (next_phase) state_.phase = *next_phase;
         state_.batch = std::move(batch); state_.settings = settings;
         state_.can_start = state_.phase == GuiPhase::Idle && (state_.batch.counts.ready > 0 || state_.batch.counts.cancelled > 0);
     };
@@ -115,7 +116,9 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                             if (row.job.state() == JobState::Cancelled) ++state_.last_run.cancelled;
                         }
                     }
-                    converting = false; phase(GuiPhase::Idle); publish();
+                    // Publish settled results and Idle together so readers cannot
+                    // observe an idle controller with an earlier in-progress batch.
+                    converting = false; publish(GuiPhase::Idle);
                 }
             }
             std::optional<Command> command;
