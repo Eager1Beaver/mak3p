@@ -144,5 +144,21 @@ void MainWindow::populate(const AppSettings& settings) {
     output_->replace(1, settings.output_mode == OutputMode::CustomDirectory ? path_utf8(settings.custom_output_directory.filename()).c_str() : text("gui_choose_folder").c_str());
     output_->copy_tooltip((settings.custom_output_directory.empty() ? text("gui_source_folders") : path_utf8(settings.custom_output_directory)).c_str());
 }
+void MainWindow::settings_changed(Fl_Widget* source) {
+    if (snapshot_.phase != GuiPhase::Idle) return;
+    auto settings = snapshot_.settings;
+    settings.audio.bitrate_kbps = rates[std::clamp(bitrate_->value(), 0, 5)];
+    settings.audio.channel_mode = channels_->value() == 0 ? ChannelMode::Stereo : channels_->value() == 1 ? ChannelMode::Mono : ChannelMode::Auto;
+    if (output_->value() == 1 && (settings.output_mode != OutputMode::CustomDirectory || source == output_)) {
+        Fl_Native_File_Chooser picker(Fl_Native_File_Chooser::BROWSE_DIRECTORY); picker.title(text("gui_choose_folder").c_str());
+        const int result = picker.show();
+        if (result != 0) { populate(snapshot_.settings); return; }
+        settings.custom_output_directory = path_from_utf8(picker.filename());
+    }
+    settings.output_mode = output_->value() == 1 ? OutputMode::CustomDirectory : OutputMode::SameAsSource;
+    settings.workers = worker_values_[std::clamp(workers_->value(), 0, static_cast<int>(worker_values_.size()) - 1)];
+    settings.audio.include_mp3_from_folders = include_->value(); settings.audio.force_upsampling = force_->value(); settings.logging_enabled = log_->value();
+    if (!controller_.configure(settings)) populate(snapshot_.settings);
+}
 
 } // namespace audio_converter::gui
