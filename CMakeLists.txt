@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Mak3P VERSION 0.1.0 LANGUAGES C CXX)
+project(Mak3P VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,10 @@ function(audio_converter_warnings target)
 endfunction()
 
 find_package(Threads REQUIRED)
+configure_file(src/app/version.hpp.in generated/app/version.hpp @ONLY)
+if(AUDIO_CONVERTER_BUILD_GUI AND NOT AUDIO_CONVERTER_BUILD_AUDIO)
+    message(FATAL_ERROR "The desktop application requires AUDIO_CONVERTER_BUILD_AUDIO=ON")
+endif()
 
 add_library(audio_converter_core STATIC
     src/core/job.cpp
@@ -25,7 +29,7 @@ add_library(audio_converter_core STATIC
     src/core/output_naming.cpp
     src/core/output_transaction.cpp
 )
-target_include_directories(audio_converter_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_include_directories(audio_converter_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_compile_features(audio_converter_core PUBLIC cxx_std_20)
 target_link_libraries(audio_converter_core PUBLIC Threads::Threads)
 audio_converter_warnings(audio_converter_core)
@@ -57,6 +61,9 @@ if(AUDIO_CONVERTER_BUILD_AUDIO)
         src/app/settings.cpp
         src/app/run_log.cpp
         src/app/batch.cpp
+        src/app/import.cpp
+        src/app/gui_controller.cpp
+        src/gui/presentation.cpp
     )
     target_link_libraries(audio_converter_batch PUBLIC audio_converter_audio)
     audio_converter_warnings(audio_converter_batch)
@@ -99,10 +106,17 @@ if(AUDIO_CONVERTER_BUILD_GUI)
     )
     FetchContent_MakeAvailable(fltk)
 
+    add_library(audio_converter_gui STATIC src/gui/queue_view.cpp src/gui/main_window.cpp)
+    target_link_libraries(audio_converter_gui PUBLIC audio_converter_batch fltk::fltk)
+    audio_converter_warnings(audio_converter_gui)
     add_executable(Mak3P WIN32 src/main.cpp)
-    target_link_libraries(Mak3P PRIVATE
-        audio_converter_core fltk::fltk TagLib::tag
-    )
+    target_link_libraries(Mak3P PRIVATE audio_converter_gui)
+    set_property(TARGET Mak3P APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/documents/help.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/documents/licenses.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/documents/changelog.txt")
+    add_custom_command(TARGET Mak3P POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/resources/documents" "$<TARGET_FILE_DIR:Mak3P>/documents")
 
     audio_converter_warnings(Mak3P)
 endif()
