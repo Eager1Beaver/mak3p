@@ -24,5 +24,10 @@ QueueView::QueueView(int x, int y, int w, int h) : Fl_Group(x, y, w, h) {
     scrollbar_->callback([](Fl_Widget*, void* data) { static_cast<QueueView*>(data)->redraw(); }, this);
     end();
 }
+void QueueView::update_scrollbar() {
+    const int total = static_cast<int>(rows_.size()) * metrics::row_height;
+    scrollbar_->value(std::clamp(scrollbar_->value(), 0, std::max(0, total - h())), h(), 0, std::max(h(), total));
+    if (total > h()) scrollbar_->show(); else scrollbar_->hide();
+}
 
 } // namespace audio_converter::gui
