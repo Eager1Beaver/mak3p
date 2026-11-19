@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <set>
 
 namespace audio_converter {
 namespace {
@@ -68,6 +69,8 @@ struct BatchEngine::Impl {
     std::unique_ptr<RunLog> log;
     std::stop_source stop;
     std::jthread coordinator;
+    std::set<JobId> active;
+    bool incremental = false;
 
     void require_idle() const {
         if (phase != BatchPhase::Idle) throw AudioError({"batch_busy", {}, {}});
@@ -88,12 +91,21 @@ struct BatchEngine::Impl {
         }
     }
 
+    std::vector<ConversionJob> log_inputs() const {
+        std::vector<ConversionJob> inputs;
+        for (const auto& job : queue.jobs()) {
+            if (!incremental || active.contains(job.id()) ||
+                job.state() != JobState::Completed) inputs.push_back(job);
+        }
+        return inputs;
+    }
+
     void create_log() {
         if (!settings.logging_enabled) return;
         // The queue cannot be mutated while this coordinator owns the run.
         try {
             log = std::make_unique<RunLog>(directory, version, backend.ffmpeg_version,
-                                           backend.ffprobe_version, settings, queue.jobs());
+                                           backend.ffprobe_version, settings, log_inputs());
             std::lock_guard lock(mutex);
             log_path = log->path();
         } catch (const std::exception& error) { log_error(error, "log_create_failed"); }
@@ -213,11 +225,17 @@ struct BatchEngine::Impl {
 
     void run(bool convert) {
         try {
-            if (convert) create_log();
+            if (convert) {
+                create_log();
+                if (incremental) {
+                    for (const auto& job : log_inputs())
+                        if (!active.contains(job.id())) emit(job, rows.at(job.id()));
+                }
+            }
             std::vector<JobId> ids;
             {
                 std::lock_guard lock(mutex);
-                for (const auto& job : queue.jobs()) ids.push_back(job.id());
+                for (const auto& job : queue.jobs()) if (active.contains(job.id())) ids.push_back(job.id());
             }
             parallel(ids, [&](JobId id) { inspect_one(id); });
             if (convert && !stop.stop_requested()) {
@@ -225,7 +243,7 @@ struct BatchEngine::Impl {
                 {
                     std::lock_guard lock(mutex);
                     phase = BatchPhase::Converting;
-                    for (const auto& job : queue.jobs()) if (job.state() == JobState::Ready) ids.push_back(job.id());
+                    for (const auto& job : queue.jobs()) if (active.contains(job.id()) && job.state() == JobState::Ready) ids.push_back(job.id());
                 }
                 OutputPathPlanner planner;
                 std::mutex allocation;
@@ -296,7 +314,7 @@ struct BatchEngine::Impl {
             std::lock_guard lock(mutex);
             for (const auto& entry : queue.jobs()) {
                 auto& job = queue.job(entry.id());
-                if (stop.stop_requested() && (job.state() == JobState::Checking ||
+                if (active.contains(job.id()) && stop.stop_requested() && (job.state() == JobState::Checking ||
                     job.state() == JobState::Ready || job.state() == JobState::Converting)) {
                     job.cancel();
                     auto& row = rows.at(job.id());
@@ -305,7 +323,8 @@ struct BatchEngine::Impl {
                     unfinished.emplace_back(job, row);
                 }
             }
-            counts = counts_for(queue.jobs(), excluded);
+            const auto inputs = log_inputs();
+            counts = counts_for(inputs, excluded);
         }
         for (const auto& [job, row] : unfinished) emit(job, row);
         if (log) {
@@ -318,7 +337,7 @@ struct BatchEngine::Impl {
         phase = BatchPhase::Idle;
     }
 
-    void launch(bool convert) {
+    void launch(bool convert, bool pending = false) {
         std::lock_guard lifecycle_lock(lifecycle);
         {
             std::lock_guard lock(mutex);
@@ -326,11 +345,15 @@ struct BatchEngine::Impl {
         }
         if (coordinator.joinable()) coordinator.join();
         std::lock_guard lock(mutex);
+        active.clear(); incremental = pending;
         for (const auto& entry : queue.jobs()) {
+            if (pending && entry.state() != JobState::Checking &&
+                !(entry.state() == JobState::Cancelled || (convert && entry.state() == JobState::Ready))) continue;
+            active.insert(entry.id());
             queue.job(entry.id()).reset();
             rows.at(entry.id()) = Row{};
         }
-        warnings.clear(); log_path.reset(); excluded = 0; workers = 0;
+        warnings.clear(); log_path.reset(); if (!pending) excluded = 0; workers = 0;
         stop = std::stop_source{};
         phase = BatchPhase::Inspecting;
         try { coordinator = std::jthread([this, convert] { run(convert); }); }
@@ -381,8 +404,16 @@ void BatchEngine::configure(AppSettings settings) {
     std::lock_guard lock(impl_->mutex);
     impl_->require_idle();
     if (impl_->settings == settings) return;
+    const bool invalidate = impl_->settings.audio.bitrate_kbps != settings.audio.bitrate_kbps ||
+        impl_->settings.audio.channel_mode != settings.audio.channel_mode ||
+        impl_->settings.audio.force_upsampling != settings.audio.force_upsampling ||
+        impl_->settings.output_mode != settings.output_mode ||
+        impl_->settings.custom_output_directory != settings.custom_output_directory;
+    const bool import_changed = impl_->settings.audio.include_mp3_from_folders != settings.audio.include_mp3_from_folders;
     impl_->settings = std::move(settings);
+    if (!invalidate && !import_changed) return;
     for (const auto& entry : impl_->queue.jobs()) {
+        if (!invalidate && entry.state() == JobState::Completed) continue;
         impl_->queue.job(entry.id()).reset(); impl_->rows.at(entry.id()) = Impl::Row{};
     }
 }
@@ -392,6 +423,8 @@ AppSettings BatchEngine::settings() const {
 }
 void BatchEngine::inspect_async() { impl_->launch(false); }
 void BatchEngine::start_async() { impl_->launch(true); }
+void BatchEngine::inspect_pending_async() { impl_->launch(false, true); }
+void BatchEngine::start_pending_async() { impl_->launch(true, true); }
 void BatchEngine::cancel() {
     std::stop_source source;
     { std::lock_guard lock(impl_->mutex); source = impl_->stop; }
@@ -414,6 +447,7 @@ BatchSnapshot BatchEngine::snapshot() const {
         JobSnapshot item{job, row.diagnostic, row.warnings, std::nullopt, row.started.has_value(), 0, std::nullopt};
         if (row.inspection) {
             item.media = row.inspection->media;
+            if (row.inspection->diagnostic.key != "source_unreadable") item.source_size = row.inspection->source_size;
             item.output_bitrate_kbps = row.inspection->output_bitrate_kbps;
         }
         if (row.started) {
