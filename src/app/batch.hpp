@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/settings.hpp"
+#include "app/identity.hpp"
 
 #include <memory>
 #include <mutex>
@@ -45,6 +46,7 @@ struct JobSnapshot {
     double elapsed_seconds = 0;
     std::optional<double> eta_seconds;
     std::optional<int> output_bitrate_kbps = std::nullopt;
+    std::optional<std::uintmax_t> source_size = std::nullopt;
 };
 
 struct BatchSnapshot {
@@ -62,7 +64,7 @@ class BatchEngine {
 public:
     BatchEngine(BatchBackend backend, 
                 fs::path application_directory,
-                std::string application_version = "0.1.0");
+                std::string version = application_version);
     ~BatchEngine();
     BatchEngine(const BatchEngine&) = delete;
     BatchEngine& operator=(const BatchEngine&) = delete;
@@ -73,6 +75,9 @@ public:
     [[nodiscard]] AppSettings settings() const;
     void inspect_async();
     void start_async();
+    // Preserve completed history; inspect only invalid rows and run only pending rows.
+    void inspect_pending_async();
+    void start_pending_async();
     void cancel();
     void wait();
     [[nodiscard]] BatchSnapshot snapshot() const;
