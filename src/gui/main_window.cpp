@@ -193,5 +193,7 @@ void MainWindow::request_close() {
     if (closing_) return;
     closing_ = true; controller_.window_size(normal_size_.width, normal_size_.height); controller_.close(); refresh();
 }
+void MainWindow::timer(void* data) { auto* window = static_cast<MainWindow*>(data); window->refresh();
+    if (window->shown()) Fl::repeat_timeout(metrics::refresh_seconds, timer, data); }
 
 } // namespace audio_converter::gui
