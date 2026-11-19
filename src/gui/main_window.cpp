@@ -170,5 +170,13 @@ void MainWindow::choose(bool folders) {
     std::vector<fs::path> paths; for (int i = 0; i < picker.count(); ++i) paths.push_back(path_from_utf8(picker.filename(i)));
     (void)controller_.add(std::move(paths));
 }
+void MainWindow::choose_engine() {
+    if (snapshot_.phase != GuiPhase::EngineMissing) return;
+    const int answer = fl_choice("%s", text("gui_exit").c_str(), text("gui_choose_engine").c_str(), text("gui_retry").c_str(), text("engine_missing").c_str());
+    if (answer == 0) { request_close(); return; }
+    if (answer == 2) { controller_.select_engine({}); return; }
+    Fl_Native_File_Chooser picker(Fl_Native_File_Chooser::BROWSE_DIRECTORY); picker.title(text("gui_choose_engine").c_str());
+    if (!picker.show()) controller_.select_engine(path_from_utf8(picker.filename()));
+}
 
 } // namespace audio_converter::gui
