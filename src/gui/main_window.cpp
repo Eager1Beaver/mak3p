@@ -52,17 +52,17 @@ void install_icon() {
 }
 }
 MainWindow::MainWindow(fs::path directory, std::optional<BatchBackend> backend)
-    : Fl_Double_Window(metrics::minimum_width, 
-                       metrics::minimum_height, 
+    : ConstrainedWindow(metrics::minimum_width,
+                       metrics::minimum_height,
                        application_name),
         directory_(std::move(directory)), controller_(directory_, std::move(backend)) {
     install_icon();
     color(colors::background);
-    size_range(metrics::minimum_width, metrics::minimum_height);
     menu_ = new Fl_Menu_Button(0, 0, 1, 1, application_name);
     menu_->add(text("gui_about").c_str(), 0, [](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->dialog(true); }, this);
     menu_->add(text("gui_help").c_str(), 0, [](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->dialog(false); }, this);
-    menu_->add(text("gui_add").c_str(), 0, [](Fl_Widget*, void* data) { auto* window = static_cast<MainWindow*>(data); if (window->snapshot_.phase == GuiPhase::Idle) window->add_->popup(); }, this);
+    menu_->add(text("gui_select_files").c_str(), 0, [](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->choose(false); }, this);
+    menu_->add(text("gui_select_folders").c_str(), 0, [](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->choose(true); }, this);
     menu_->add(text("gui_default_size").c_str(), 0, [](Fl_Widget*, void* data) { auto* window = static_cast<MainWindow*>(data); window->un_maximize(); window->size(metrics::minimum_width, metrics::minimum_height); }, this);
     menu_->add(text("gui_exit").c_str(), 0, [](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->request_close(); }, this);
     queue_ = new QueueView(0, 0, 1, 1);
@@ -102,7 +102,7 @@ MainWindow::MainWindow(fs::path directory, std::optional<BatchBackend> backend)
     for (auto* widget : {hint_, metadata_, notice_, count_, summary_}) { widget->labelsize(metrics::small_font_size); widget->color(color()); }
     for (auto* widget : {bitrate_, channels_, output_, workers_}) { widget->textsize(metrics::font_size); widget->box(FL_BORDER_BOX); }
     menu_->box(FL_THIN_UP_BOX); add_->box(FL_THIN_UP_BOX); clear_->box(FL_THIN_UP_BOX); start_->box(FL_THIN_UP_BOX);
-    end(); resizable(queue_); layout();
+    end(); resizable(queue_); layout(); publish_size_limits();
     callback([](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->request_close(); }, this);
     populate(AppSettings{}); refresh(); Fl::add_timeout(metrics::refresh_seconds, timer, this);
 }
@@ -125,7 +125,7 @@ void MainWindow::layout() {
     start_->resize(margin, h() - margin - primary_height, width, primary_height);
 }
 void MainWindow::resize(int x, int y, int w, int h) {
-    Fl_Double_Window::resize(x, y, std::max(w, metrics::minimum_width), std::max(h, metrics::minimum_height)); layout();
+    ConstrainedWindow::resize(x, y, w, h); layout();
     if (!maximize_active() && !fullscreen_active()) {
         normal_size_ = {this->w(), this->h()};
         resized_ = std::chrono::steady_clock::now(); resize_pending_ = true;
@@ -161,22 +161,30 @@ void MainWindow::settings_changed(Fl_Widget* source) {
     if (!controller_.configure(settings)) populate(snapshot_.settings);
 }
 void MainWindow::choose(bool folders) {
-    if (snapshot_.phase != GuiPhase::Idle) return;
-    Fl_Native_File_Chooser picker(folders ? Fl_Native_File_Chooser::BROWSE_MULTI_DIRECTORY : Fl_Native_File_Chooser::BROWSE_MULTI_FILE);
-    const auto title = text(folders ? "gui_select_folders" : "gui_select_files"); picker.title(title.c_str());
-    const auto filter = text("gui_files_filter"); if (!folders) picker.filter(filter.c_str());
-    const int result = picker.show();
-    if (result < 0) { fl_alert("%s", picker.errmsg()); return; } if (result > 0) return;
-    std::vector<fs::path> paths; for (int i = 0; i < picker.count(); ++i) paths.push_back(path_from_utf8(picker.filename(i)));
-    (void)controller_.add(std::move(paths));
+    try {
+        if (snapshot_.phase != GuiPhase::Idle) return;
+        Fl_Native_File_Chooser picker(folders ? Fl_Native_File_Chooser::BROWSE_MULTI_DIRECTORY : Fl_Native_File_Chooser::BROWSE_MULTI_FILE);
+        const auto title = text(folders ? "gui_select_folders" : "gui_select_files"); picker.title(title.c_str());
+        const auto filter = text("gui_files_filter"); if (!folders) picker.filter(filter.c_str());
+        const int result = picker.show();
+        if (result < 0) { fl_alert("%s", picker.errmsg()); return; } if (result > 0) return;
+        std::vector<fs::path> paths; for (int i = 0; i < picker.count(); ++i) paths.push_back(path_from_utf8(picker.filename(i)));
+        (void)controller_.add(std::move(paths));
+    } catch (const std::exception& error) {
+        fl_alert("%s\n%s", text("gui_operation_failed").c_str(), error.what());
+    }
 }
 void MainWindow::choose_engine() {
-    if (snapshot_.phase != GuiPhase::EngineMissing) return;
-    const int answer = fl_choice("%s", text("gui_exit").c_str(), text("gui_choose_engine").c_str(), text("gui_retry").c_str(), text("engine_missing").c_str());
-    if (answer == 0) { request_close(); return; }
-    if (answer == 2) { controller_.select_engine({}); return; }
-    Fl_Native_File_Chooser picker(Fl_Native_File_Chooser::BROWSE_DIRECTORY); picker.title(text("gui_choose_engine").c_str());
-    if (!picker.show()) controller_.select_engine(path_from_utf8(picker.filename()));
+    try {
+        if (snapshot_.phase != GuiPhase::EngineMissing) return;
+        const int answer = fl_choice("%s", text("gui_exit").c_str(), text("gui_choose_engine").c_str(), text("gui_retry").c_str(), text("engine_missing").c_str());
+        if (answer == 0) { request_close(); return; }
+        if (answer == 2) { controller_.select_engine({}); return; }
+        Fl_Native_File_Chooser picker(Fl_Native_File_Chooser::BROWSE_DIRECTORY); picker.title(text("gui_choose_engine").c_str());
+        if (!picker.show()) controller_.select_engine(path_from_utf8(picker.filename()));
+    } catch (const std::exception& error) {
+        fl_alert("%s\n%s", text("gui_operation_failed").c_str(), error.what());
+    }
 }
 void MainWindow::drop(std::string_view payload) {
     if (snapshot_.phase != GuiPhase::Idle) return;
@@ -184,7 +192,11 @@ void MainWindow::drop(std::string_view payload) {
     catch (const std::exception& error) { fl_alert("%s", error.what()); }
 }
 int MainWindow::handle(int event) {
-    if (event == FL_DND_ENTER || event == FL_DND_DRAG || event == FL_DND_RELEASE) return snapshot_.phase == GuiPhase::Idle ? 1 : 0;
+    if (event == FL_DND_ENTER || event == FL_DND_DRAG || event == FL_DND_RELEASE) {
+        if (closing_ || snapshot_.phase != GuiPhase::Idle) return 0;
+        Fl::belowmouse(this);
+        return 1;
+    }
     if (event == FL_DND_LEAVE) return 1;
     if (event == FL_PASTE) { drop(std::string_view(Fl::event_text(), Fl::event_length())); return 1; }
     return Fl_Double_Window::handle(event);
@@ -193,11 +205,12 @@ void MainWindow::request_close() {
     if (closing_) return;
     closing_ = true; controller_.window_size(normal_size_.width, normal_size_.height); controller_.close(); refresh();
 }
-void MainWindow::timer(void* data) { 
+void MainWindow::timer(void* data) {
     auto* window = static_cast<MainWindow*>(data); window->refresh();
-    if (window->shown()) Fl::repeat_timeout(metrics::refresh_seconds, timer, data); 
+    if (window->shown()) Fl::repeat_timeout(metrics::refresh_seconds, timer, data);
 }
 void MainWindow::refresh() {
+    std::erase_if(dialogs_, [](const auto& item) { return !item->shown(); });
     snapshot_ = controller_.snapshot();
     if (!restored_ && snapshot_.phase != GuiPhase::Initializing) {
         restored_ = true;
@@ -241,25 +254,28 @@ void MainWindow::refresh() {
 }
 void MainWindow::open_document(const char* name) {
     const auto path = directory_ / "documents" / name;
-    std::error_code error;
-    if (!fs::is_regular_file(path, error)) { fl_alert("%s", text("gui_document_failed").c_str()); return; }
-    std::string uri = "file://";
-#ifdef _WIN32
-    uri += '/';
-#endif
-    auto document_path = path_utf8(path);
-    std::replace(document_path.begin(), document_path.end(), '\\', '/');
-    for (unsigned char c : document_path) {
-        if (std::isalnum(c) || c == '/' || c == ':' || c == '-' || c == '_' || c == '.' || c == '~') uri += static_cast<char>(c);
-        else { const char* hex = "0123456789ABCDEF"; uri += '%'; uri += hex[c >> 4]; uri += hex[c & 15]; }
-    }
-    char error_message[1024]{};
-    if (!fl_open_uri(uri.c_str(), error_message, sizeof error_message)) fl_alert("%s\n%s", text("gui_document_failed").c_str(), error_message);
+    std::ifstream input(path, std::ios::binary);
+    if (!input) { fl_alert("%s", text("gui_document_failed").c_str()); return; }
+    const auto content = std::string(std::istreambuf_iterator<char>(input), {});
+    auto window = std::make_unique<ConstrainedWindow>(metrics::help_width, metrics::help_height, nullptr, true);
+    window->copy_label(text(std::string_view(name) == "licenses.txt" ? "gui_license" : "gui_changelog").c_str());
+    auto* body = new Fl_Help_View(metrics::margin, metrics::margin,
+                                  metrics::help_width - 2 * metrics::margin, metrics::help_height - 64);
+    body->textsize(metrics::font_size);
+    body->value(("<p>" + escape_html(content) + "</p>").c_str());
+    auto* close = new Fl_Button(metrics::help_width - 104, metrics::help_height - 42, 92, 28);
+    close->copy_label(text("gui_close").c_str());
+    close->callback([](Fl_Widget* widget, void*) { widget->window()->hide(); });
+    window->end(); window->publish_size_limits();
+    window->show();
+    // Keep hidden windows alive until the next event-loop tick; callbacks can still
+    // be executing on a window whose child has just opened a document.
+    dialogs_.push_back(std::move(window));
 }
 void MainWindow::dialog(bool about) {
     const int width = about ? metrics::about_width : metrics::help_width;
     const int height = about ? metrics::about_height : metrics::help_height;
-    auto window = std::make_unique<Fl_Double_Window>(width, height);
+    auto window = std::make_unique<ConstrainedWindow>(width, height, nullptr, true);
     window->copy_label(text(about ? "gui_about" : "gui_help").c_str()); window->set_non_modal();
     auto* body = new Fl_Help_View(12, 12, width - 24, height - 64); body->textsize(metrics::font_size);
     std::string content;
@@ -294,8 +310,8 @@ void MainWindow::dialog(bool about) {
     }
     auto* close = new Fl_Button(width - 104, height - 42, 92, 28); close->copy_label(text("gui_close").c_str());
     close->callback([](Fl_Widget* widget, void*) { widget->window()->hide(); });
-    window->end(); window->show();
-    std::erase_if(dialogs_, [](const auto& item) { return !item->shown(); }); dialogs_.push_back(std::move(window));
+    window->end(); window->publish_size_limits(); window->show();
+    dialogs_.push_back(std::move(window));
 }
 
 
