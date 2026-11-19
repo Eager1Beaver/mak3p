@@ -36,4 +36,25 @@ void GuiController::select_engine(fs::path directory) { (void)submit({Operation:
 void GuiController::cancel() { cancel_ = true; condition_.notify_one(); }
 void GuiController::close() { closing_ = true; worker_.request_stop(); condition_.notify_one(); }
 
+void GuiController::run(fs::path directory, std::optional<BatchBackend> backend, std::stop_token stop) {
+    SettingsStore store(directory);
+    AppSettings settings;
+    std::unique_ptr<BatchEngine> engine;
+    bool converting = false;
+    auto phase = [&](GuiPhase value) { std::lock_guard lock(mutex_); state_.phase = value; state_.can_start = false; };
+    auto notice = [&](Diagnostic value) {
+        std::lock_guard lock(mutex_);
+        if (state_.notices.size() == 16) state_.notices.erase(state_.notices.begin());
+        state_.notices.push_back(std::move(value));
+    };
+    auto persist = [&] { for (auto& warning : store.save(settings)) notice(std::move(warning)); };
+    auto publish = [&] {
+        auto batch = engine ? engine->snapshot() : BatchSnapshot{};
+        std::lock_guard lock(mutex_);
+        state_.batch = std::move(batch); state_.settings = settings;
+        state_.can_start = state_.phase == GuiPhase::Idle && (state_.batch.counts.ready > 0 || state_.batch.counts.cancelled > 0);
+    };
+
+}
+
 } // namespace audio_converter
