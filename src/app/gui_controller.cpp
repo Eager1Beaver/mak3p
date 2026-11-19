@@ -163,6 +163,22 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                     if (engine) break;
                     settings.engine_directory = item.paths.empty() ? fs::path{} : item.paths.front();
                     initialize(); if (engine) persist(); break;
+                case Operation::Start:
+                    if (!engine || (!engine->snapshot().counts.ready && !engine->snapshot().counts.cancelled)) break;
+                    {
+                        std::lock_guard lock(mutex_); state_.run_ids.clear();
+                        for (const auto& row : engine->snapshot().jobs)
+                            if (row.job.state() == JobState::Ready || row.job.state() == JobState::Cancelled) state_.run_ids.push_back(row.job.id());
+                        state_.has_run = true;
+                    }
+                    converting = true; engine->start_pending_async(); phase(GuiPhase::Running); break;
+                }
+            } catch (const AudioError& error) { notice(error.diagnostic()); phase(engine ? GuiPhase::Idle : GuiPhase::EngineMissing); }
+            catch (const std::exception& error) { notice({"gui_operation_failed", {}, error.what()}); phase(engine ? GuiPhase::Idle : GuiPhase::EngineMissing); }
+            publish();
+        }
+
+                
 
 }
 
