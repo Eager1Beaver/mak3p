@@ -1,12 +1,19 @@
 #pragma once
 
 #include "audio/audio.hpp"
+#include "gui/constants.hpp"
 
 #include <string_view>
 
 namespace audio_converter {
 
 enum class OutputMode { SameAsSource, CustomDirectory };
+
+struct WindowPreferences {
+    int width = gui::metrics::minimum_width;
+    int height = gui::metrics::minimum_height;
+    bool operator==(const WindowPreferences&) const = default;
+};
 
 struct AppSettings {
     AudioSettings audio;
@@ -15,6 +22,8 @@ struct AppSettings {
     bool recursive_folders = true;
     unsigned workers = 0;
     bool logging_enabled = false;
+    WindowPreferences window;
+    fs::path engine_directory;
     bool operator==(const AppSettings&) const = default;
 };
 
