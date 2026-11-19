@@ -88,7 +88,36 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
         if (settings.workers && cpu && settings.workers > cpu) {
             settings.workers = cpu; notice({"gui_workers_clamped", {{"count", std::to_string(cpu)}}, {}});
         }
-
+        initialize();
+        while (!stop.stop_requested()) {
+            if (cancel_.exchange(false) && engine && engine->snapshot().phase != BatchPhase::Idle) {
+                phase(GuiPhase::Cancelling); engine->cancel();
+            }
+            if (engine && engine->snapshot().phase != BatchPhase::Idle) {
+                publish();
+                std::unique_lock lock(mutex_); condition_.wait_for(lock, std::chrono::milliseconds(30)); continue;
+            }
+            if (engine) {
+                auto current = snapshot().phase;
+                if (current == GuiPhase::Running || current == GuiPhase::Checking || current == GuiPhase::Cancelling) {
+                    engine->wait();
+                    for (auto& warning : engine->snapshot().warnings) notice(std::move(warning));
+                    if (converting) {
+                        const auto result = engine->snapshot();
+                        std::lock_guard lock(mutex_);
+                        state_.last_run = {};
+                        state_.last_run.skipped = result.counts.skipped;
+                        for (const auto& row : result.jobs) {
+                            if (std::find(state_.run_ids.begin(), state_.run_ids.end(), row.job.id()) == state_.run_ids.end()) continue;
+                            ++state_.last_run.total;
+                            if (row.job.state() == JobState::Completed) ++state_.last_run.completed;
+                            if (row.job.state() == JobState::Failed) ++state_.last_run.failed;
+                            if (row.job.state() == JobState::Cancelled) ++state_.last_run.cancelled;
+                        }
+                    }
+                    converting = false; phase(GuiPhase::Idle); publish();
+                }
+            }
 
 }
 
