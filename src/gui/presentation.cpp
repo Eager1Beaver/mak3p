@@ -28,5 +28,18 @@ std::vector<unsigned> worker_options(unsigned detected, unsigned saved) {
     std::sort(result.begin(), result.end()); result.erase(std::unique(result.begin(), result.end()), result.end());
     return result;
 }
+std::string phase_text(GuiPhase phase) {
+    switch (phase) {
+    case GuiPhase::Initializing: return text("gui_initializing");
+    case GuiPhase::Importing: return text("gui_importing");
+    case GuiPhase::Checking: return text("gui_checking");
+    case GuiPhase::Running: return text("gui_running");
+    case GuiPhase::Cancelling: return text("gui_cancelling");
+    case GuiPhase::EngineMissing: return text("engine_missing");
+    case GuiPhase::Closing: case GuiPhase::Closed: return text("gui_closing");
+    case GuiPhase::Idle: return {};
+    }
+    return {};
+}
 
 } // namespace audio_converter::gui
