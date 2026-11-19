@@ -59,6 +59,19 @@ RowText present_row(const JobSnapshot& row, std::size_t position, const AppSetti
         const auto time = row.media->duration_seconds ? row.media->duration_seconds : row.media->audio.duration_seconds;
         if (time) length = duration(*time);
     }
+    if (row.source_size) size = text("gui_mb", {{"value", decimal(*row.source_size / 1000000.0, 2)}});
+    view.properties = codec + " · " + rate + " · " + bitrate + " · " + channels + " · " + size + " · " + length;
+    std::string key;
+    switch (row.job.state()) {
+    case JobState::Checking: key = "gui_status_checking"; break;
+    case JobState::Ready: key = "gui_status_ready"; break;
+    case JobState::Converting: key = "gui_status_converting"; break;
+    case JobState::Completed: key = "gui_status_completed"; break;
+    case JobState::Failed: key = "gui_status_failed"; view.failed = true; break;
+    case JobState::Cancelled: key = "gui_status_cancelled"; break;
+    default: key = "gui_status_skipped"; view.warning = true; break;
+    }
+
 }
 
 } // namespace audio_converter::gui
