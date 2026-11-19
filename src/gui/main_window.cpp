@@ -106,5 +106,23 @@ MainWindow::MainWindow(fs::path directory, std::optional<BatchBackend> backend)
     callback([](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->request_close(); }, this);
     populate(AppSettings{}); refresh(); Fl::add_timeout(metrics::refresh_seconds, timer, this);
 }
+MainWindow::~MainWindow() { Fl::remove_timeout(timer, this); controller_.close(); }
+void MainWindow::layout() {
+    using namespace metrics;
+    const int width = w() - 2 * margin, col = (width - gap) / 2;
+    menu_->resize(margin, margin, menu_width, menu_height);
+    const int queue_top = margin + menu_height + gap;
+    const int bottom = h() - settings_panel_height;
+    queue_->resize(margin, queue_top, width, bottom - queue_top);
+    hint_->resize(margin, bottom + hint_offset, width, hint_height);
+    add_->resize(margin, bottom + input_buttons_offset, col, control_height); clear_->resize(margin + col + gap, bottom + input_buttons_offset, col, control_height);
+    bitrate_->resize(margin, bottom + audio_settings_offset, col, control_height); channels_->resize(margin + col + gap, bottom + audio_settings_offset, col, control_height);
+    output_->resize(margin, bottom + output_settings_offset, col, control_height); workers_->resize(margin + col + gap, bottom + output_settings_offset, col, control_height);
+    include_->resize(margin, bottom + import_options_offset, col, option_height); force_->resize(margin + col + gap, bottom + import_options_offset, col, option_height);
+    log_->resize(margin, bottom + log_option_offset, width, option_height); metadata_->resize(margin, bottom + metadata_offset, width, hint_height);
+    summary_->resize(margin, bottom + summary_offset, width - count_width - 2, option_height); count_->resize(w() - margin - count_width, bottom + summary_offset, count_width, option_height);
+    notice_->resize(margin, bottom + notice_offset, width, hint_height); engine_->resize(margin, bottom + engine_action_offset, width, 24);
+    start_->resize(margin, h() - margin - primary_height, width, primary_height);
+}
 
 } // namespace audio_converter::gui
