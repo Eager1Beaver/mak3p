@@ -193,7 +193,52 @@ void MainWindow::request_close() {
     if (closing_) return;
     closing_ = true; controller_.window_size(normal_size_.width, normal_size_.height); controller_.close(); refresh();
 }
-void MainWindow::timer(void* data) { auto* window = static_cast<MainWindow*>(data); window->refresh();
-    if (window->shown()) Fl::repeat_timeout(metrics::refresh_seconds, timer, data); }
+void MainWindow::timer(void* data) { 
+    auto* window = static_cast<MainWindow*>(data); window->refresh();
+    if (window->shown()) Fl::repeat_timeout(metrics::refresh_seconds, timer, data); 
+}
+void MainWindow::refresh() {
+    snapshot_ = controller_.snapshot();
+    if (!restored_ && snapshot_.phase != GuiPhase::Initializing) {
+        restored_ = true;
+        int screen_x, screen_y, screen_w, screen_h; Fl::screen_work_area(screen_x, screen_y, screen_w, screen_h, 0);
+        size(std::max(metrics::minimum_width, std::min(snapshot_.settings.window.width, screen_w)),
+             std::max(metrics::minimum_height, std::min(snapshot_.settings.window.height, screen_h)));
+        populate(snapshot_.settings);
+    }
+    if (snapshot_.phase == GuiPhase::Closed) { for (auto& window : dialogs_) window->hide(); hide(); return; }
+    const bool idle = !closing_ && snapshot_.phase == GuiPhase::Idle;
+    enabled(add_, idle); enabled(clear_, idle && !snapshot_.batch.jobs.empty());
+    for (Fl_Widget* widget : std::array<Fl_Widget*, 7>{bitrate_, channels_, output_, workers_, include_, force_, log_}) enabled(widget, idle);
+    enabled(start_, !closing_ && (snapshot_.can_start || snapshot_.phase == GuiPhase::Running));
+    update_label(start_, text(closing_ ? "gui_closing" : snapshot_.phase == GuiPhase::Running ? "gui_cancel" : snapshot_.phase == GuiPhase::Cancelling ? "gui_cancelling" : "gui_start"));
+    std::vector<RowText> rows; for (std::size_t i = 0; i < snapshot_.batch.jobs.size(); ++i) rows.push_back(present_row(snapshot_.batch.jobs[i], i + 1, snapshot_.settings));
+    queue_->rows(std::move(rows), idle);
+    if (idle) {
+        output_->replace(1, snapshot_.settings.output_mode == OutputMode::CustomDirectory ? path_utf8(snapshot_.settings.custom_output_directory.filename()).c_str() : text("gui_choose_folder").c_str());
+        output_->copy_tooltip(path_utf8(snapshot_.settings.custom_output_directory).c_str());
+        const auto& counts = snapshot_.batch.counts;
+        if (snapshot_.has_run && counts.ready == 0) update_label(summary_, text("gui_counts", {{"completed", std::to_string(snapshot_.last_run.completed)}, {"skipped", std::to_string(snapshot_.last_run.skipped)}, {"failed", std::to_string(snapshot_.last_run.failed)}, {"cancelled", std::to_string(snapshot_.last_run.cancelled)}}));
+        else update_label(summary_, text("gui_ready_count", {{"ready", std::to_string(counts.ready)}, {"total", std::to_string(counts.total)}}));
+        // Synchronize values after an asynchronous settings command settles.
+        if (bitrate_->value() != static_cast<int>(std::find(std::begin(rates), std::end(rates), snapshot_.settings.audio.bitrate_kbps) - std::begin(rates)) ||
+            channels_->value() != (snapshot_.settings.audio.channel_mode == ChannelMode::Stereo ? 0 : snapshot_.settings.audio.channel_mode == ChannelMode::Mono ? 1 : 2)) populate(snapshot_.settings);
+    } else update_label(summary_, phase_text(snapshot_.phase));
+    std::size_t done = 0;
+    for (const auto& row : snapshot_.batch.jobs) if (std::find(snapshot_.run_ids.begin(), snapshot_.run_ids.end(), row.job.id()) != snapshot_.run_ids.end() &&
+        row.job.state() != JobState::Ready && row.job.state() != JobState::Converting && row.job.state() != JobState::Checking) ++done;
+    update_label(count_, snapshot_.run_ids.empty() ? "" : text("gui_run_count", {{"done", std::to_string(done)}, {"total", std::to_string(snapshot_.run_ids.size())}}));
+    std::string notice;
+    if (!snapshot_.notices.empty()) notice = message(snapshot_.notices.back());
+    else if (snapshot_.batch.counts.excluded) notice = text("gui_excluded", {{"count", std::to_string(snapshot_.batch.counts.excluded)}});
+    update_label(notice_, notice);
+    std::string full_notice; for (const auto& item : snapshot_.notices) full_notice += message(item) + "\n" + item.technical_detail + "\n";
+    if (engine_tip_ != full_notice) { engine_tip_ = std::move(full_notice); notice_->copy_tooltip(engine_tip_.c_str()); }
+    if (snapshot_.phase == GuiPhase::EngineMissing) { engine_->show(); notice_->hide(); } else { engine_->hide(); notice_->show(); }
+    if (resize_pending_ && restored_ && !closing_ && std::chrono::steady_clock::now() - resized_ > std::chrono::milliseconds(metrics::resize_save_delay_ms)) {
+        resize_pending_ = false; controller_.window_size(normal_size_.width, normal_size_.height);
+    }
+}
+
 
 } // namespace audio_converter::gui
