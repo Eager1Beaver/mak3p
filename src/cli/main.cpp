@@ -64,7 +64,7 @@ int run(const std::vector<std::string>& arguments) {
         ImportOrigin origin = ImportOrigin::SelectedFile;
         bool save_settings = false;
         bool paths_only = false;
-        
+
         std::vector<fs::path> inputs;
         for (std::size_t index = 2; index < arguments.size(); ++index) {
             const auto& option = arguments[index];
@@ -77,6 +77,33 @@ int run(const std::vector<std::string>& arguments) {
             if (option == "--save-settings") { save_settings = true; continue; }
             if (index + 1 >= arguments.size()) throw AudioError({"cli_invalid_arguments", {}, {}});
             const auto& value = arguments[++index];
+            if (option == "--bitrate") {
+                const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(),
+                                                         settings.audio.bitrate_kbps);
+                if (error != std::errc{} || end != value.data() + value.size()) {
+                    throw AudioError({"invalid_bitrate", {}, {}});
+                }
+            } else if (option == "--channels") {
+                if (value == "auto") settings.audio.channel_mode = ChannelMode::Auto;
+                else if (value == "stereo") settings.audio.channel_mode = ChannelMode::Stereo;
+                else if (value == "mono") settings.audio.channel_mode = ChannelMode::Mono;
+                else throw AudioError({"invalid_channels", {}, {}});
+            } else if (option == "--output-dir") {
+                settings.output_mode = OutputMode::CustomDirectory;
+                settings.custom_output_directory = fs::absolute(input_path(value));
+            } else if (option == "--workers") {
+                settings.workers = 0;
+                if (value != "auto") {
+                    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), settings.workers);
+                    if (error != std::errc{} || end != value.data() + value.size()) {
+                        throw AudioError({"invalid_workers", {}, {}});
+                    }
+                }
+            } else if (option == "--ffmpeg") tools.ffmpeg = input_path(value);
+            else if (option == "--ffprobe") tools.ffprobe = input_path(value);
+            else if (option != "--config") throw AudioError({"cli_invalid_arguments", {}, {}});
+        }
+
 
 
 
