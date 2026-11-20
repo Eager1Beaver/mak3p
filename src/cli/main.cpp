@@ -161,6 +161,24 @@ int run(const std::vector<std::string>& arguments) {
                              mode == Mp3BitrateMode::Unknown ? "mode_unknown" : "mode_not_mp3";
             print("cli_bitrate_mode", {{"mode", message({key, {}, {}})}});
         }
+        if (input.state != JobState::Ready) {
+            if (!input.diagnostic.technical_detail.empty()) {
+                std::cerr << input.diagnostic.technical_detail << '\n';
+            }
+            return input.state == JobState::SameBitrateSkipped || input.state == JobState::LowerBitrateSkipped ? 0 : 2;
+        }
+        for (const auto& warning : input.warnings) print_detail(warning, true);
+        return 0;
+    } catch (const AudioError& error) {
+        print_detail({"cli_error", {{"message", message(error.diagnostic())}},
+                      error.diagnostic().technical_detail}, true);
+        return 1;
+    } catch (const std::exception& error) {
+        print_detail({"cli_error", {{"message", message({"conversion_failed", {}, {}})}},
+                      error.what()}, true);
+        return 1;
+    }
+
 
 
 
