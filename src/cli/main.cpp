@@ -147,6 +147,20 @@ int run(const std::vector<std::string>& arguments) {
                 {"excluded", std::to_string(count.excluded)}});
             return count.cancelled ? 130 : count.failed || !result.warnings.empty() ? 3 : 0;
         }
+        const auto input = processor->inspect({inputs.front(), origin}, settings.audio);
+        print("cli_input", {{"path", path_utf8(input.source.path)}});
+        print("cli_status", {{"status", message(input.diagnostic)}});
+        if (input.output_bitrate_kbps) print("cli_output_bitrate", {{"bitrate", std::to_string(*input.output_bitrate_kbps)}});
+        if (input.media) {
+            const auto& audio = input.media->audio;
+            print("cli_audio", {{"codec", audio.codec}, {"rate", std::to_string(audio.sample_rate)},
+                                {"channels", std::to_string(audio.channels)}});
+            const auto mode = input.media->mp3.mode;
+            const auto key = mode == Mp3BitrateMode::Cbr ? "mode_cbr" :
+                             mode == Mp3BitrateMode::Vbr ? "mode_vbr" :
+                             mode == Mp3BitrateMode::Unknown ? "mode_unknown" : "mode_not_mp3";
+            print("cli_bitrate_mode", {{"mode", message({key, {}, {}})}});
+        }
 
 
 
