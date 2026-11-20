@@ -27,6 +27,17 @@ void print_detail(const Diagnostic& diagnostic, bool error = false) {
     if (!diagnostic.technical_detail.empty()) stream << diagnostic.technical_detail << '\n';
 }
 
+volatile std::sig_atomic_t interrupted = 0;
+void interrupt_handler(int) { interrupted = 1; }
+
+
+struct InterruptGuard {
+    using Handler = void (*)(int);
+    Handler previous = std::signal(SIGINT, interrupt_handler);
+    InterruptGuard() { interrupted = 0; }
+    ~InterruptGuard() { std::signal(SIGINT, previous); }
+};
+
 int run(const std::vector<std::string>& arguments) {
     try {
         if (arguments.size() == 2 && arguments[1] == "--help") {
@@ -103,6 +114,24 @@ int run(const std::vector<std::string>& arguments) {
             else if (option == "--ffprobe") tools.ffprobe = input_path(value);
             else if (option != "--config") throw AudioError({"cli_invalid_arguments", {}, {}});
         }
+        if (inputs.empty() || (arguments[1] != "batch" && inputs.size() != 1)) {
+            throw AudioError({"cli_invalid_arguments", {}, {}});
+        }
+        validate_settings(settings);
+        if (save_settings) for (const auto& warning : store.save(settings)) print_detail(warning, true);
+        auto processor = std::make_shared<AudioProcessor>(tools);
+        if (arguments[1] != "inspect") {
+            BatchEngine batch(batch_backend(processor), app_directory);
+            batch.configure(settings);
+            for (const auto& path : inputs) (void)batch.add(path, origin);
+            InterruptGuard interrupt_guard;
+            batch.start_async();
+            while (batch.snapshot().phase != BatchPhase::Idle) {
+                if (interrupted) batch.cancel();
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            batch.wait();
+            const auto result = batch.snapshot();
 
 
 
