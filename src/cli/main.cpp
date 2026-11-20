@@ -132,6 +132,21 @@ int run(const std::vector<std::string>& arguments) {
             }
             batch.wait();
             const auto result = batch.snapshot();
+            for (const auto& item : result.jobs) {
+                print("cli_row", {{"path", path_utf8(item.job.source().path)}, {"status", message(item.diagnostic)}});
+                if (item.output_bitrate_kbps) print("cli_output_bitrate", {{"bitrate", std::to_string(*item.output_bitrate_kbps)}});
+                if (!item.diagnostic.technical_detail.empty()) std::cerr << item.diagnostic.technical_detail << '\n';
+                for (const auto& warning : item.warnings) print_detail(warning, true);
+                if (item.job.output()) print("cli_output", {{"path", path_utf8(*item.job.output())}});
+            }
+            for (const auto& warning : result.warnings) print_detail(warning, true);
+            if (result.log_path) print("cli_log", {{"path", path_utf8(*result.log_path)}});
+            const auto& count = result.counts;
+            print("batch_summary", {{"completed", std::to_string(count.completed)}, {"skipped", std::to_string(count.skipped)},
+                {"failed", std::to_string(count.failed)}, {"cancelled", std::to_string(count.cancelled)},
+                {"excluded", std::to_string(count.excluded)}});
+            return count.cancelled ? 130 : count.failed || !result.warnings.empty() ? 3 : 0;
+        }
 
 
 
