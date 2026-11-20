@@ -44,7 +44,21 @@ int run(const std::vector<std::string>& arguments) {
         const auto app_directory = executable_directory();
         SettingsStore store(app_directory);
         SettingsResult loaded;
+        
         std::optional<fs::path> config;
+        for (std::size_t index = 2; index < arguments.size(); ++index) {
+            if (arguments[index] == "--") break;
+            if (arguments[index] == "--config") {
+                if (++index == arguments.size()) throw AudioError({"cli_invalid_arguments", {}, {}});
+                config = input_path(arguments[index]);
+            } else if (arguments[index].starts_with("--") &&
+                       arguments[index] != "--folder-import" && arguments[index] != "--include-mp3" &&
+                       arguments[index] != "--force-upsampling" && arguments[index] != "--log" &&
+                       arguments[index] != "--save-settings") ++index;
+        }
+        if (config) loaded = read_settings(*config);
+        else loaded = store.load();
+
 
     }
 
