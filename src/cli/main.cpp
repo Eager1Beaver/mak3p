@@ -182,4 +182,15 @@ int run(const std::vector<std::string>& arguments) {
 
 } // namespace
 
-
+#ifdef _WIN32
+int wmain(int argc, wchar_t** argv) {
+    SetConsoleOutputCP(CP_UTF8);
+    std::vector<std::string> arguments;
+    for (int index = 0; index < argc; ++index) arguments.push_back(audio_converter::path_utf8(argv[index]));
+    return run(arguments);
+}
+#else
+int main(int argc, char** argv) {
+    return run(std::vector<std::string>(argv, argv + argc));
+}
+#endif
