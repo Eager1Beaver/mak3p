@@ -178,13 +178,8 @@ int run(const std::vector<std::string>& arguments) {
                       error.what()}, true);
         return 1;
     }
-
-
-
-
-
-    }
-
 }
 
-}
+} // namespace
+
+
