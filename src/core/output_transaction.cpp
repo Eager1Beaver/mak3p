@@ -95,7 +95,8 @@ struct OutputTransaction::Impl {
                 (".audio-converter-" + random_token() + ".partial.mp3");
 #ifdef _WIN32
             const auto native = windows_api_path(temporary);
-            handle = CreateFileW(native.c_str(), GENERIC_READ | GENERIC_WRITE,
+            // Retain identity without imposing read/write sharing on media libraries.
+            handle = CreateFileW(native.c_str(), FILE_READ_ATTRIBUTES,
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                 nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
             if (handle == INVALID_HANDLE_VALUE) {
@@ -195,7 +196,7 @@ struct OutputTransaction::Impl {
         }
         if (error == ERROR_ACCESS_DENIED) {
             std::error_code status_error;
-            const auto status = fs::symlink_status(final, status_error);
+            const auto status = fs::symlink_status(fs::path(destination), status_error);
             if (!status_error && status.type() != fs::file_type::not_found) {
                 return Publication::Collision;
             }
