@@ -232,7 +232,7 @@ fs::path resolve_executable(const fs::path& executable) {
     }
 #ifdef _WIN32
     if (executable.has_parent_path()) {
-        const auto path = fs::canonical(executable);
+        const auto path = fs::canonical(file_io_path(executable));
         if (!fs::is_regular_file(path)) throw std::invalid_argument("Executable is not a file");
         return path;
     }
@@ -243,9 +243,16 @@ fs::path resolve_executable(const fs::path& executable) {
                                      static_cast<DWORD>(buffer.size()), 
                                      buffer.data(), 
                                      nullptr);
-    if (length == 0 || length >= buffer.size()) win_error("Cannot find executable");
+    if (length == 0) {
+        throw fs::filesystem_error("Cannot find executable", executable,
+            std::error_code(static_cast<int>(GetLastError()), std::system_category()));
+    }
+    if (length >= buffer.size()) {
+        throw fs::filesystem_error("Executable path is too long", executable,
+            std::make_error_code(std::errc::filename_too_long));
+    }
     buffer.resize(length);
-    return fs::canonical(buffer);
+    return fs::canonical(file_io_path(buffer));
 #else
     if (executable.has_parent_path()) {
         const auto path = fs::canonical(executable);
@@ -310,9 +317,19 @@ ProcessResult run_process(const ProcessRequest& request, std::stop_token stop) {
     for (const auto& argument : request.arguments) command += L" " + quote(wide(argument));
     if (command.size() >= 32767) throw std::length_error("Process command line is too long");
     PROCESS_INFORMATION process{};
-    if (!CreateProcessW(native.c_str(), command.data(), nullptr, nullptr, TRUE,
+    // Report loader failures to the caller without a Windows error dialog.
+    DWORD previous_error_mode = 0;
+    const auto changed_error_mode = SetThreadErrorMode(
+        GetThreadErrorMode() | SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX, &previous_error_mode);
+    const auto created = CreateProcessW(native.c_str(), command.data(), nullptr, nullptr, TRUE,
         EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW | CREATE_SUSPENDED,
-        nullptr, nullptr, &startup.StartupInfo, &process)) win_error("Cannot start process");
+        nullptr, nullptr, &startup.StartupInfo, &process);
+    const auto creation_error = created ? ERROR_SUCCESS : GetLastError();
+    if (changed_error_mode) SetThreadErrorMode(previous_error_mode, nullptr);
+    if (!created) {
+        SetLastError(creation_error);
+        win_error("Cannot start process");
+    }
     Handle child(process.hProcess);
     Handle thread(process.hThread);
     RunningProcess supervise{job.value, child.value};
