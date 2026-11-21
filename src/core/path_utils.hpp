@@ -20,6 +20,9 @@ struct PathLess {
 
 [[nodiscard]] std::size_t filename_limit(const fs::path& directory);
 
+// Returns a path suitable for filesystem calls and media tools.
+[[nodiscard]] fs::path file_io_path(const fs::path& path);
+
 #ifdef _WIN32
 [[nodiscard]] std::wstring windows_api_path(const fs::path& path);
 #endif

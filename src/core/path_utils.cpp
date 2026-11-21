@@ -42,17 +42,23 @@ fs::path normalize_source_path(const fs::path& path) {
         path.filename() == "." || path.filename() == "..") {
         throw std::invalid_argument("Source file path is missing a filename");
     }
+#ifdef _WIN32
+    if (path.filename().native().find(L':') != std::wstring::npos) {
+        throw std::invalid_argument("Source file path specifies a Windows alternate data stream");
+    }
+#endif
     const auto absolute = fs::absolute(path);
     std::error_code error;
-    auto normalized = fs::weakly_canonical(absolute, error);
+    auto normalized = fs::weakly_canonical(file_io_path(absolute), error);
     return preferred_path(error ? absolute : normalized);
 }
 
 fs::path normalize_directory(const fs::path& directory) {
     validate_path(directory);
     const auto requested = directory.empty() ? fs::current_path() : directory;
+    const auto native = file_io_path(requested);
     std::error_code error;
-    const bool is_directory = fs::is_directory(requested, error);
+    const bool is_directory = fs::is_directory(native, error);
     if (error && error != std::errc::no_such_file_or_directory &&
         error != std::errc::not_a_directory) {
         throw fs::filesystem_error("Cannot inspect output directory", requested, error);
@@ -60,7 +66,7 @@ fs::path normalize_directory(const fs::path& directory) {
     if (!is_directory) {
         throw std::invalid_argument("Output directory does not exist or is not a directory");
     }
-    return preferred_path(fs::canonical(requested));
+    return preferred_path(fs::canonical(native));
 }
 
 bool PathLess::operator()(const fs::path& left, const fs::path& right) const {
@@ -95,6 +101,19 @@ std::size_t filename_limit(const fs::path& directory) {
     }
     return limit < 0 ? 255 : static_cast<std::size_t>(limit);
 #endif
+}
+
+fs::path file_io_path(const fs::path& path) {
+#ifdef _WIN32
+    if (!path.empty()) {
+        const auto absolute = path.is_absolute() ? path : fs::absolute(path);
+        // Windows directory operations can require space for an appended 8.3 name.
+        if (absolute.native().size() >= MAX_PATH - 12) {
+            return windows_api_path(absolute);
+        }
+    }
+#endif
+    return path;
 }
 
 #ifdef _WIN32
