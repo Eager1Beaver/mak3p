@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app/version.hpp"
+
 namespace audio_converter {
 
 inline constexpr char application_name[] = "Mak3P";
