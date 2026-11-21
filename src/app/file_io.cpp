@@ -28,6 +28,7 @@ struct ExclusiveFile::Impl {
     HANDLE handle = INVALID_HANDLE_VALUE;
     BY_HANDLE_FILE_INFORMATION identity{};
     bool owned() const {
+        if (path.empty()) return false;
         const auto probe = CreateFileW(windows_api_path(path).c_str(), FILE_READ_ATTRIBUTES,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
             FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
@@ -61,7 +62,7 @@ struct ExclusiveFile::Impl {
     ~Impl() {
         if (!retained && owned()) {
             std::error_code ignored;
-            fs::remove(path, ignored);
+            fs::remove(file_io_path(path), ignored);
         }
         close();
     }
