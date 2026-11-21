@@ -91,7 +91,8 @@ TagLib::StringList comparable_values(const TagLib::String& key, TagLib::StringLi
 }
 
 std::optional<Diagnostic> verify(const fs::path& output, const Metadata& metadata) {
-    TagLib::FileStream stream(output.c_str(), true);
+    const auto path = file_io_path(output);
+    TagLib::FileStream stream(path.c_str(), true);
     TagLib::FileRef file(&stream, false);
     if (file.isNull()) {
         return Diagnostic{"metadata_verify_failed", {{"field", "file"}}, {}};
@@ -114,7 +115,8 @@ std::optional<Diagnostic> verify(const fs::path& output, const Metadata& metadat
 }
 
 void save(const fs::path& output, const Metadata& metadata, TagLib::ID3v2::Version version) {
-    TagLib::FileStream stream(output.c_str(), false);
+    const auto path = file_io_path(output);
+    TagLib::FileStream stream(path.c_str(), false);
     TagLib::MPEG::File file(&stream, false);
     if (!file.isValid() || file.readOnly()) throw AudioError({"metadata_save_failed", {}, {}});
     auto* tag = file.ID3v2Tag(true);
@@ -137,7 +139,8 @@ Metadata read_metadata(const fs::path& source,
                        std::vector<Diagnostic>& warnings) {
     Metadata result;
     std::set<std::string> warned;
-    TagLib::FileStream stream(source.c_str(), true);
+    const auto path = file_io_path(source);
+    TagLib::FileStream stream(path.c_str(), true);
     TagLib::FileRef file(&stream, false);
     if (!file.isNull()) {
         append_properties(result, file.properties(), warnings, warned);
