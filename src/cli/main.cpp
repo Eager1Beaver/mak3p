@@ -3,6 +3,7 @@
 #include "app/import.hpp"
 #include "audio/process.hpp"
 
+#include <atomic>
 #include <charconv>
 #include <csignal>
 #include <thread>
@@ -35,6 +36,23 @@ void print_detail(const Diagnostic& diagnostic, bool error = false) {
     if (!diagnostic.technical_detail.empty()) stream << diagnostic.technical_detail << '\n';
 }
 
+#ifdef _WIN32
+std::atomic_bool interrupted = false;
+
+BOOL WINAPI console_interrupt(DWORD event) {
+    if (event != CTRL_C_EVENT && event != CTRL_BREAK_EVENT) return FALSE;
+    interrupted = true;
+    return TRUE;
+}
+
+struct InterruptGuard {
+    InterruptGuard() {
+        interrupted = false;
+        SetConsoleCtrlHandler(console_interrupt, TRUE);
+    }
+    ~InterruptGuard() { SetConsoleCtrlHandler(console_interrupt, FALSE); }
+};
+#else
 volatile std::sig_atomic_t interrupted = 0;
 void interrupt_handler(int) { interrupted = 1; }
 
@@ -45,6 +63,7 @@ struct InterruptGuard {
     InterruptGuard() { interrupted = 0; }
     ~InterruptGuard() { std::signal(SIGINT, previous); }
 };
+#endif
 
 int run(const std::vector<std::string>& arguments) {
     try {
