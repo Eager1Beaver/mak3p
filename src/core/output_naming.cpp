@@ -12,7 +12,7 @@ namespace {
 
 bool path_occupied(const fs::path& path) {
     std::error_code error;
-    const auto status = fs::symlink_status(path, error);
+    const auto status = fs::symlink_status(file_io_path(path), error);
     if (error && error != std::errc::no_such_file_or_directory) {
         throw fs::filesystem_error("Cannot inspect output path", path, error);
     }
