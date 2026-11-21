@@ -52,7 +52,7 @@ fs::path utf8_path(const std::string& value) {
 }
 
 std::string read_ini(const fs::path& path) {
-    std::ifstream stream(path, std::ios::binary);
+    std::ifstream stream(file_io_path(path), std::ios::binary);
     if (!stream) throw std::runtime_error("Cannot open settings file");
     std::string data;
     char buffer[4096];
@@ -249,13 +249,13 @@ void SettingsStore::select() {
     fallback_ = false;
     selected_ = application_directory_ / "config.ini";
     std::error_code error;
-    const auto status = fs::symlink_status(selected_, error);
+    const auto status = fs::symlink_status(file_io_path(selected_), error);
     const bool portable_file_writable = (!error && status.type() == fs::file_type::not_found) ||
         error == std::errc::no_such_file_or_directory ||
         (!error && fs::is_regular_file(status) && detail::writable_existing_file(selected_));
     if (detail::writable_directory(application_directory_) && portable_file_writable) return;
     if (fallback_directory_.empty()) throw std::runtime_error("No writable settings fallback is available");
-    fs::create_directories(fallback_directory_);
+    fs::create_directories(file_io_path(fallback_directory_));
     if (!detail::writable_directory(fallback_directory_)) {
         throw std::runtime_error("The settings fallback is not writable");
     }
@@ -268,10 +268,11 @@ SettingsLoadResult SettingsStore::load() {
     try {
         select();
         auto source = selected_;
-        if (fallback_ && !fs::exists(source) && fs::exists(application_directory_ / "config.ini")) {
-            source = application_directory_ / "config.ini";
+        const auto portable = application_directory_ / "config.ini";
+        if (fallback_ && !fs::exists(file_io_path(source)) && fs::exists(file_io_path(portable))) {
+            source = portable;
         }
-        if (fs::exists(source)) {
+        if (fs::exists(file_io_path(source))) {
             auto parsed = parse_settings(read_ini(source), source.parent_path());
             result.settings = std::move(parsed.settings);
             result.warnings = std::move(parsed.warnings);
