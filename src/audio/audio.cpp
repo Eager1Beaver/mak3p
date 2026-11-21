@@ -83,17 +83,18 @@ ProcessRequest decode_request(const fs::path& executable, const fs::path& source
     request.executable = executable;
     request.arguments = {
         "-nostdin", "-hide_banner", "-v", "error", "-xerror", "-threads", "1",
-        "-protocol_whitelist", "file,pipe", "-i", path_utf8(source),
+        "-protocol_whitelist", "file,pipe", "-i", path_utf8(file_io_path(source)),
         "-map", "0:" + std::to_string(stream), "-vn", "-sn", "-dn", "-f", "null", "-"
     };
     return request;
 }
 
 void source_unchanged(const Inspection& input) {
+    const auto source = file_io_path(input.source.path);
     std::error_code size_error;
-    const auto size = fs::file_size(input.source.path, size_error);
+    const auto size = fs::file_size(source, size_error);
     std::error_code time_error;
-    const auto time = fs::last_write_time(input.source.path, time_error);
+    const auto time = fs::last_write_time(source, time_error);
     if (size_error || time_error || size != input.source_size || time != input.source_modified) {
         throw AudioError({"source_changed", {}, {}});
     }
@@ -195,10 +196,11 @@ enum class Mp3Scan { BoundedInput, CompleteOutput };
 
 Mp3Analysis scan_mp3(const fs::path& source, std::stop_token stop, Mp3Scan scope) {
     const bool bounded = scope == Mp3Scan::BoundedInput;
+    const auto path = file_io_path(source);
     std::error_code size_error;
-    const auto size = fs::file_size(source, size_error);
+    const auto size = fs::file_size(path, size_error);
     if (size_error || (bounded && size > 256ULL * 1024 * 1024)) return {};
-    TagLib::FileStream stream(source.c_str(), true);
+    TagLib::FileStream stream(path.c_str(), true);
     if (!stream.isOpen()) return {};
     TagLib::MPEG::File file(&stream, false);
     if (!file.isValid()) return {};
@@ -291,7 +293,7 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
         "-show_entries",
         "stream=index,codec_type,codec_name,sample_rate,channels,channel_layout,duration,bit_rate:"
         "stream_tags:format=format_name,duration,bit_rate:format_tags",
-        "-of", "json", "-i", path_utf8(source)
+        "-of", "json", "-i", path_utf8(file_io_path(source))
     }, 30s};
     request.output_limit = 16 * 1024 * 1024;
     const auto result = run_process(request, stop);
@@ -381,17 +383,18 @@ Inspection AudioProcessor::inspect(const SourceFile& source,
     try {
         if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
         inspection.source.path = normalize_source_path(source.path);
-        if (!fs::is_regular_file(inspection.source.path)) {
+        const auto source_path = file_io_path(inspection.source.path);
+        if (!fs::is_regular_file(source_path)) {
             throw AudioError({"source_unreadable", {}, {}});
         }
-        inspection.source_size = fs::file_size(inspection.source.path);
-        inspection.source_modified = fs::last_write_time(inspection.source.path);
+        inspection.source_size = fs::file_size(source_path);
+        inspection.source_modified = fs::last_write_time(source_path);
         auto media = probe(inspection.source.path, true, stop);
         source_unchanged(inspection);
         const bool mp3 = format_is_mp3(media);
         inspection.media = std::move(media);
         if (inspection.media->audio.codec == "wavpack") {
-            TagLib::FileStream stream(inspection.source.path.c_str(), true);
+            TagLib::FileStream stream(source_path.c_str(), true);
             if (stream.isOpen()) {
                 TagLib::WavPack::File file(&stream, true, TagLib::AudioProperties::Fast);
                 const auto* properties = file.audioProperties();
@@ -472,12 +475,13 @@ ConversionResult AudioProcessor::convert(const Inspection& input,
         ProcessRequest encode{paths_.ffmpeg, {
             "-nostdin", "-hide_banner", "-v", "error", "-xerror", "-threads", "1",
             "-filter_threads", "1", "-protocol_whitelist", "file,pipe",
-            "-i", path_utf8(input.source.path), "-map", "0:" + std::to_string(input.media->audio.index),
+            "-i", path_utf8(file_io_path(input.source.path)),
+            "-map", "0:" + std::to_string(input.media->audio.index),
             "-vn", "-sn", "-dn", "-map_metadata", "-1", "-map_chapters", "-1",
             "-c:a", "libmp3lame", "-b:a", std::to_string(*bitrate) + "k",
             "-ac", std::to_string(channels), "-ar", std::to_string(rate), "-threads:a", "1",
             "-id3v2_version", "3", "-write_id3v1", "0", "-progress", "pipe:1", "-nostats",
-            "-f", "mp3", "-y", path_utf8(output.temporary_path())
+            "-f", "mp3", "-y", path_utf8(file_io_path(output.temporary_path()))
         }};
         encode.on_stdout = [&](std::string_view bytes) { reader.consume(bytes); };
         output.validate_temporary();
