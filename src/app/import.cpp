@@ -57,7 +57,7 @@ ImportResult discover_sources(const std::vector<fs::path>& paths, bool recursive
         if (stop.stop_requested()) return;
         std::error_code error;
         std::vector<fs::directory_entry> entries;
-        fs::directory_iterator it(directory, error), end;
+        fs::directory_iterator it(file_io_path(directory), error), end;
         if (!error) for (; it != end && !stop.stop_requested(); it.increment(error)) {
             if (error) break;
             entries.push_back(*it);
@@ -68,19 +68,20 @@ ImportResult discover_sources(const std::vector<fs::path>& paths, bool recursive
             if (stop.stop_requested()) return;
             error.clear();
             const auto status = entry.symlink_status(error);
-            if (error) { result.warnings.push_back({"gui_import_failed", {}, path_utf8(entry.path())}); continue; }
-            if (fs::is_directory(status)) { if (recursive) self(self, entry.path()); }
+            const auto path = directory / entry.path().filename();
+            if (error) { result.warnings.push_back({"gui_import_failed", {}, path_utf8(path)}); continue; }
+            if (fs::is_directory(status)) { if (recursive) self(self, path); }
             else if (fs::is_regular_file(status)) {
-                auto ext = path_utf8(entry.path().extension());
+                auto ext = path_utf8(path.extension());
                 std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-                if (ext != ".wvc") result.files.push_back({entry.path(), ImportOrigin::FolderScan});
+                if (ext != ".wvc") result.files.push_back({path, ImportOrigin::FolderScan});
             }
         }
     };
     for (const auto& path : paths) {
         if (stop.stop_requested()) break;
         std::error_code error;
-        if (fs::is_directory(path, error)) scan(scan, path);
+        if (fs::is_directory(file_io_path(path), error)) scan(scan, path);
         else result.files.push_back({path, ImportOrigin::SelectedFile});
     }
     return result;
@@ -97,7 +98,8 @@ EnginePaths discover_engine(const fs::path& directory, const fs::path& selected)
     for (const auto& candidate : {directory, directory / "bin", selected}) {
         if (candidate.empty()) continue;
         std::error_code error;
-        if (fs::is_regular_file(candidate / ffmpeg, error) && fs::is_regular_file(candidate / ffprobe, error))
+        if (fs::is_regular_file(file_io_path(candidate / ffmpeg), error) &&
+            fs::is_regular_file(file_io_path(candidate / ffprobe), error))
             return {candidate / ffmpeg, candidate / ffprobe};
     }
     return {ffmpeg, ffprobe};
