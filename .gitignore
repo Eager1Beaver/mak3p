@@ -31,6 +31,14 @@ build.ninja
 *.pdb
 *.ilk
 *.pch
+*.idb
+*.ipdb
+*.iobj
+*.exp
+*.res
+*.tlog
+*.lastbuildstate
+*.dmp
 *.gch
 *.log
 *.tmp
@@ -41,6 +49,12 @@ __pycache__/
 /core.[0-9]*
 /.cache/
 .vs/
+*.VC.db
+*.VC.opendb
+*.vcxproj.user
+*.sln.docstates
+Thumbs.db
+Desktop.ini
 *.swp
 *.swo
 .DS_Store
