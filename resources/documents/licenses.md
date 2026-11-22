@@ -70,8 +70,8 @@ Third-party license terms take precedence for the components they cover. This ag
 Support is provided at the Author's discretion and is not guaranteed. When reporting a problem, include the Mak3P version, operating system, a description of the problem, and relevant diagnostics. Remove private paths and other personal information before sharing logs.
 
 - **Author:** Ilia Golub
-- **Email:** [TO BE ADDED]
-- **GitHub:** [TO BE ADDED]
+- **Email:** [TO BE UPDATED]
+- **GitHub:** [Mak3P](https://github.com/Eager1Beaver/mak3p)
 
 ## 9. Third-party components {#components}
 

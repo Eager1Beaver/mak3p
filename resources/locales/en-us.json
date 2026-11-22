@@ -137,7 +137,7 @@
   "gui_release": "Release date: 19/11/2026",
   "gui_build": "{platform} · {bits}-bit",
   "gui_author": "Author: Ilia Golub",
-  "gui_contacts": "Email: [TO BE ADDED]  |  GitHub: [TO BE ADDED]",
+  "gui_contacts": "Email: [TO BE ADDED]  |  GitHub: https://github.com/Eager1Beaver/mak3p",
   "gui_copyright": "© Ilia Golub, 2026",
   "gui_files_filter": "Audio files\t*.{{flac,ape,wv,wav,wave,mp4,m4a,dsf,ac3,aif,aiff,ogg,opus,wma,mp3}}\nAll files\t*",
   "gui_notice": "Notice: {message}",
