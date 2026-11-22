@@ -63,7 +63,7 @@
   "batch_summary": "Converted: {completed}; skipped: {skipped}; failed: {failed}; cancelled: {cancelled}; excluded: {excluded}.",
   "cli_log": "Log: {path}",
   "cli_row": "{path}: {status}",
-  "bitrate_adjusted": "Output bitrate adjusted from the requested {requested} kbps to {effective} kbps to avoid increasing the source bitrate.",
+  "bitrate_adjusted": "Output bitrate adjusted from the requested {requested} kbps to {effective} kbps to avoid increasing the source bitrate. Use Force upsampling to convert with the requested bitrate.",
   "cli_output_bitrate": "Output bitrate: {bitrate} kbps (CBR).",
   "cli_version": "{app} {version}",
   "wavpack_hybrid": "Hybrid WavPack input will use its lossy audio stream. FFmpeg does not apply .wvc correction files.",
