@@ -1,5 +1,6 @@
 #include "gui/main_window.hpp"
 #include "gui/constants.hpp"
+#include "gui/input_picker.hpp"
 #include "app/import.hpp"
 #include "audio/process.hpp"
 
@@ -161,13 +162,8 @@ void MainWindow::settings_changed(Fl_Widget* source) {
 void MainWindow::choose(bool folders) {
     try {
         if (snapshot_.phase != GuiPhase::Idle) return;
-        Fl_Native_File_Chooser picker(folders ? Fl_Native_File_Chooser::BROWSE_MULTI_DIRECTORY : Fl_Native_File_Chooser::BROWSE_MULTI_FILE);
-        const auto title = text(folders ? "gui_select_folders" : "gui_select_files"); picker.title(title.c_str());
-        const auto filter = text("gui_files_filter"); if (!folders) picker.filter(filter.c_str());
-        const int result = picker.show();
-        if (result < 0) { fl_alert("%s", picker.errmsg()); return; } if (result > 0) return;
-        std::vector<fs::path> paths; for (int i = 0; i < picker.count(); ++i) paths.push_back(path_from_utf8(picker.filename(i)));
-        (void)controller_.add(std::move(paths));
+        auto paths = select_input_paths(*this, folders);
+        if (!paths.empty()) (void)controller_.add(std::move(paths));
     } catch (const std::exception& error) {
         fl_alert("%s\n%s", text("gui_operation_failed").c_str(), error.what());
     }
