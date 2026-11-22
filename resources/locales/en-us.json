@@ -5,7 +5,7 @@
   "process_timeout": "The audio tool exceeded the allowed time.",
   "process_cancelled": "Conversion cancelled.",
   "source_unreadable": "The source file is missing, unreadable, or not a regular file.",
-  "source_changed": "The source file changed after it was checked. Check it again before converting.",
+  "source_changed": "The source file changed after it was checked. Remove it from the selection and add it again before converting.",
   "settings_changed": "The conversion settings changed after the file was checked. Check it again before converting.",
   "probe_invalid": "The audio tool returned incomplete or invalid media information.",
   "no_audio": "No usable audio stream was found.",
