@@ -40,12 +40,16 @@ BatchBackend batch_backend(std::shared_ptr<const AudioProcessor> processor) {
         [processor](const Inspection& input, const AudioSettings& settings, OutputTransaction& output,
                     std::stop_token stop, ProgressCallback progress) {
             return processor->convert(input, settings, output, stop, std::move(progress));
-        }, processor->ffmpeg_version(), processor->ffprobe_version()
+        }, processor->ffmpeg_version(), processor->ffprobe_version(),
+        [processor](const SourceFile& source, std::stop_token stop) {
+            return processor->inspect_source(source, stop);
+        }
     };
 }
 
 struct BatchEngine::Impl {
     struct Row {
+        std::shared_ptr<const SourceInspection> source_inspection;
         std::optional<Inspection> inspection;
         Diagnostic diagnostic{"checking", {}, {}};
         std::vector<Diagnostic> warnings;
@@ -71,6 +75,13 @@ struct BatchEngine::Impl {
     std::jthread coordinator;
     std::set<JobId> active;
     bool incremental = false;
+
+    void reset_row(JobId id) {
+        auto& row = rows.at(id);
+        auto cached = std::move(row.source_inspection);
+        row = Row{};
+        row.source_inspection = std::move(cached);
+    }
 
     void require_idle() const {
         if (phase != BatchPhase::Idle) throw AudioError({"batch_busy", {}, {}});
@@ -113,12 +124,20 @@ struct BatchEngine::Impl {
 
     void inspect_one(JobId id) {
         SourceFile source;
+        std::shared_ptr<const SourceInspection> cached;
         {
             std::lock_guard lock(mutex);
             source = queue.job(id).source();
+            cached = rows.at(id).source_inspection;
         }
         Inspection input;
-        try { input = backend.inspect(source, settings.audio, stop.get_token()); }
+        try {
+            if (backend.inspect_source) {
+                if (!cached) cached = std::make_shared<const SourceInspection>(
+                    backend.inspect_source(source, stop.get_token()));
+                input = classify_source(*cached, settings.audio);
+            } else input = backend.inspect(source, settings.audio, stop.get_token());
+        }
         catch (const std::exception& error) {
             input.source = source;
             input.settings = settings.audio;
@@ -130,6 +149,7 @@ struct BatchEngine::Impl {
             std::lock_guard lock(mutex);
             auto& job = queue.job(id);
             auto& row = rows.at(id);
+            if (cached && cached->state != JobState::Cancelled) row.source_inspection = std::move(cached);
             row.inspection = std::move(input);
             auto& inspection = *row.inspection;
             row.diagnostic = inspection.diagnostic;
@@ -351,7 +371,7 @@ struct BatchEngine::Impl {
                 !(entry.state() == JobState::Cancelled || (convert && entry.state() == JobState::Ready))) continue;
             active.insert(entry.id());
             queue.job(entry.id()).reset();
-            rows.at(entry.id()) = Row{};
+            reset_row(entry.id());
         }
         warnings.clear(); log_path.reset(); if (!pending) excluded = 0; workers = 0;
         stop = std::stop_source{};
@@ -377,7 +397,13 @@ QueueAddResult BatchEngine::add(const fs::path& path, ImportOrigin origin) {
     const auto result = impl_->queue.add(path, origin);
     if (result.added) impl_->rows.emplace(result.id, Impl::Row{});
     else if (result.origin_changed) {
-        impl_->queue.job(result.id).reset(); impl_->rows.at(result.id) = Impl::Row{};
+        impl_->queue.job(result.id).reset(); impl_->reset_row(result.id);
+        auto& cached = impl_->rows.at(result.id).source_inspection;
+        if (cached) {
+            auto promoted = std::make_shared<SourceInspection>(*cached);
+            promoted->source.origin = origin;
+            cached = std::move(promoted);
+        }
     }
     return result;
 }
@@ -414,7 +440,7 @@ void BatchEngine::configure(AppSettings settings) {
     if (!invalidate && !import_changed) return;
     for (const auto& entry : impl_->queue.jobs()) {
         if (!invalidate && entry.state() == JobState::Completed) continue;
-        impl_->queue.job(entry.id()).reset(); impl_->rows.at(entry.id()) = Impl::Row{};
+        impl_->queue.job(entry.id()).reset(); impl_->reset_row(entry.id());
     }
 }
 
