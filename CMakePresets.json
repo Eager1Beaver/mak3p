@@ -65,6 +65,7 @@
       "name": "windows-release",
       "displayName": "Windows / MSVC portable Release",
       "generator": "Ninja",
+      "architecture": { "value": "x64", "strategy": "external" },
       "binaryDir": "${sourceDir}/build/windows-release",
       "condition": {
         "type": "equals",
@@ -90,6 +91,7 @@
     { "name": "audio-debug", "configurePreset": "audio-debug", "output": { "outputOnFailure": true } },
     { "name": "core-debug", "configurePreset": "core-debug", "output": { "outputOnFailure": true } },
     { "name": "wsl-debug", "configurePreset": "wsl-debug", "output": { "outputOnFailure": true } },
-    { "name": "wsl-release", "configurePreset": "wsl-release", "output": { "outputOnFailure": true } }
+    { "name": "wsl-release", "configurePreset": "wsl-release", "output": { "outputOnFailure": true } },
+    { "name": "windows-release", "configurePreset": "windows-release", "output": { "outputOnFailure": true } }
   ]
 }
