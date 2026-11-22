@@ -89,7 +89,7 @@ ProcessRequest decode_request(const fs::path& executable, const fs::path& source
     return request;
 }
 
-void source_unchanged(const Inspection& input) {
+void source_unchanged(const SourceInspection& input) {
     const auto source = file_io_path(input.source.path);
     std::error_code size_error;
     const auto size = fs::file_size(source, size_error);
@@ -373,13 +373,10 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
     }
 }
 
-Inspection AudioProcessor::inspect(const SourceFile& source, 
-                                   const AudioSettings& settings,
-                                   std::stop_token stop) const {
-    validate_settings(settings);
-    Inspection inspection;
+SourceInspection AudioProcessor::inspect_source(const SourceFile& source,
+                                                std::stop_token stop) const {
+    SourceInspection inspection;
     inspection.source = source;
-    inspection.settings = settings;
     try {
         if (stop.stop_requested()) throw AudioError({"process_cancelled", {}, {}});
         inspection.source.path = normalize_source_path(source.path);
@@ -391,7 +388,6 @@ Inspection AudioProcessor::inspect(const SourceFile& source,
         inspection.source_modified = fs::last_write_time(source_path);
         auto media = probe(inspection.source.path, true, stop);
         source_unchanged(inspection);
-        const bool mp3 = format_is_mp3(media);
         inspection.media = std::move(media);
         if (inspection.media->audio.codec == "wavpack") {
             TagLib::FileStream stream(source_path.c_str(), true);
@@ -404,33 +400,6 @@ Inspection AudioProcessor::inspect(const SourceFile& source,
             }
             source_unchanged(inspection);
         }
-        if (mp3 && source.origin == ImportOrigin::FolderScan &&
-            !settings.include_mp3_from_folders) {
-            inspection.diagnostic = {"mp3_excluded", {}, {}};
-            return inspection;
-        }
-        const auto& audio = inspection.media->audio;
-        inspection.output_bitrate_kbps = select_output_bitrate(settings, inspection.media->bitrate_bps);
-        if (!inspection.output_bitrate_kbps) {
-            inspection.state = JobState::LowerBitrateSkipped;
-            inspection.diagnostic = {"lower_bitrate", {}, {}};
-            return inspection;
-        }
-        if (mp3 && inspection.media->mp3.mode == Mp3BitrateMode::Cbr &&
-            inspection.media->mp3.bitrate_kbps == inspection.output_bitrate_kbps &&
-            output_channels(audio.channels, settings.channel_mode) == audio.channels) {
-            inspection.state = JobState::SameBitrateSkipped;
-            inspection.diagnostic = {"same_bitrate", {}, {}};
-            return inspection;
-        }
-        if (!settings.force_upsampling && !inspection.media->bitrate_bps) {
-            inspection.warnings.push_back({"bitrate_unknown", {}, {}});
-        }
-        if (*inspection.output_bitrate_kbps != settings.bitrate_kbps) {
-            inspection.warnings.push_back({"bitrate_adjusted", {
-                {"requested", std::to_string(settings.bitrate_kbps)},
-                {"effective", std::to_string(*inspection.output_bitrate_kbps)}}, {}});
-        }
         inspection.state = JobState::Ready;
         inspection.diagnostic = {"ready", {}, {}};
     } catch (const AudioError& error) {
@@ -440,6 +409,52 @@ Inspection AudioProcessor::inspect(const SourceFile& source,
         inspection.diagnostic = {"source_unreadable", {}, error.what()};
     }
     return inspection;
+}
+
+Inspection classify_source(const SourceInspection& source, const AudioSettings& settings) {
+    validate_settings(settings);
+    Inspection inspection;
+    static_cast<SourceInspection&>(inspection) = source;
+    inspection.settings = settings;
+    if (source.state != JobState::Ready || !source.media) return inspection;
+    const bool mp3 = format_is_mp3(*inspection.media);
+    inspection.state = JobState::UnsupportedSkipped;
+    if (mp3 && inspection.source.origin == ImportOrigin::FolderScan &&
+        !settings.include_mp3_from_folders) {
+        inspection.diagnostic = {"mp3_excluded", {}, {}};
+        return inspection;
+    }
+    const auto& audio = inspection.media->audio;
+    inspection.output_bitrate_kbps = select_output_bitrate(settings, inspection.media->bitrate_bps);
+    if (!inspection.output_bitrate_kbps) {
+        inspection.state = JobState::LowerBitrateSkipped;
+        inspection.diagnostic = {"lower_bitrate", {}, {}};
+        return inspection;
+    }
+    if (mp3 && inspection.media->mp3.mode == Mp3BitrateMode::Cbr &&
+        inspection.media->mp3.bitrate_kbps == inspection.output_bitrate_kbps &&
+        output_channels(audio.channels, settings.channel_mode) == audio.channels) {
+        inspection.state = JobState::SameBitrateSkipped;
+        inspection.diagnostic = {"same_bitrate", {}, {}};
+        return inspection;
+    }
+    if (!settings.force_upsampling && !inspection.media->bitrate_bps) {
+        inspection.warnings.push_back({"bitrate_unknown", {}, {}});
+    }
+    if (*inspection.output_bitrate_kbps != settings.bitrate_kbps) {
+        inspection.warnings.push_back({"bitrate_adjusted", {
+            {"requested", std::to_string(settings.bitrate_kbps)},
+            {"effective", std::to_string(*inspection.output_bitrate_kbps)}}, {}});
+    }
+    inspection.state = JobState::Ready;
+    inspection.diagnostic = {"ready", {}, {}};
+    return inspection;
+}
+
+Inspection AudioProcessor::inspect(const SourceFile& source, const AudioSettings& settings,
+                                   std::stop_token stop) const {
+    validate_settings(settings);
+    return classify_source(inspect_source(source, stop), settings);
 }
 
 ConversionResult AudioProcessor::convert(const Inspection& input, 
