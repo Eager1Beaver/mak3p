@@ -92,7 +92,7 @@ struct OutputTransaction::Impl {
         request.destination_directory = final.parent_path();
         for (int attempt = 0; attempt < 128; ++attempt) {
             temporary = final.parent_path() /
-                (".audio-converter-" + random_token() + ".partial.mp3");
+                (".mak3p-" + random_token() + ".partial.mp3");
 #ifdef _WIN32
             const auto native = windows_api_path(temporary);
             // Retain identity without imposing read/write sharing on media libraries.
