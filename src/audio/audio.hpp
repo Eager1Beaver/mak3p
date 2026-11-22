@@ -55,15 +55,18 @@ struct MediaInfo {
     bool bitrate_estimated = false;
 };
 
-struct Inspection {
+struct SourceInspection {
     SourceFile source;
-    AudioSettings settings;
     JobState state = JobState::UnsupportedSkipped;
     Diagnostic diagnostic;
     std::optional<MediaInfo> media;
     std::uintmax_t source_size = 0;
     fs::file_time_type source_modified{};
     std::vector<Diagnostic> warnings;
+};
+
+struct Inspection : SourceInspection {
+    AudioSettings settings;
     std::optional<int> output_bitrate_kbps;
 };
 
@@ -94,6 +97,8 @@ void validate_settings(const AudioSettings& settings);
 [[nodiscard]] int output_channels(int source_channels, ChannelMode mode);
 [[nodiscard]] int output_sample_rate(int source_rate);
 [[nodiscard]] Mp3Analysis analyze_mp3(const fs::path& source, std::stop_token stop = {});
+// Applies output policy to source observations without accessing the file or tools.
+[[nodiscard]] Inspection classify_source(const SourceInspection& source, const AudioSettings& settings);
 
 class AudioProcessor {
 public:
@@ -101,6 +106,7 @@ public:
     [[nodiscard]] const std::string& ffmpeg_version() const noexcept { return ffmpeg_version_; }
     [[nodiscard]] const std::string& ffprobe_version() const noexcept { return ffprobe_version_; }
 
+    [[nodiscard]] SourceInspection inspect_source(const SourceFile& source, std::stop_token stop = {}) const;
     [[nodiscard]] Inspection inspect(const SourceFile& source, const AudioSettings& settings = {},
                                      std::stop_token stop = {}) const;
     [[nodiscard]] ConversionResult convert(const Inspection& input, const AudioSettings& settings,
