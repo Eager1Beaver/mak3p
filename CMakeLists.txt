@@ -99,10 +99,15 @@ if(AUDIO_CONVERTER_BUILD_GUI)
         set(FLTK_MSVC_RUNTIME_DLL OFF CACHE BOOL "" FORCE)
     endif()
 
+    if(MSVC AND MSVC_VERSION GREATER_EQUAL 1952)
+        set(fltk_patch PATCH_COMMAND "${CMAKE_COMMAND}" "-DFLTK_SOURCE_DIR=<SOURCE_DIR>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/PatchFltkMath.cmake")
+    endif()
     FetchContent_Declare(fltk
         GIT_REPOSITORY https://github.com/fltk/fltk.git
         GIT_TAG release-1.4.5
         GIT_SHALLOW TRUE
+        ${fltk_patch}
     )
     FetchContent_MakeAvailable(fltk)
 
