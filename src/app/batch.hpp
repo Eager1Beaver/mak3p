@@ -19,6 +19,8 @@ struct BatchBackend {
                                    ProgressCallback)> convert;
     std::string ffmpeg_version;
     std::string ffprobe_version;
+    // Source-only observations permit pure policy updates while a row stays queued.
+    std::function<SourceInspection(const SourceFile&, std::stop_token)> inspect_source = {};
 };
 
 [[nodiscard]] BatchBackend batch_backend(std::shared_ptr<const AudioProcessor> processor);
