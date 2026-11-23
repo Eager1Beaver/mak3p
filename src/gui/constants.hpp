@@ -17,6 +17,7 @@ inline constexpr double status_width_ratio = 0.30;
 inline constexpr double refresh_seconds = 0.10;
 inline constexpr int about_width = 460;
 inline constexpr int about_height = 310;
+inline constexpr int about_header_height = 50;
 inline constexpr int help_width = 480;
 inline constexpr int help_height = 490;
 inline constexpr int settings_panel_height = 338;
