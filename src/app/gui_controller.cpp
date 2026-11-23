@@ -6,9 +6,9 @@
 #include <utility>
 
 namespace audio_converter {
-GuiController::GuiController(fs::path directory, std::optional<BatchBackend> backend)
-    : worker_([this, directory = std::move(directory), backend = std::move(backend)](std::stop_token stop) mutable {
-        run(std::move(directory), std::move(backend), stop);
+GuiController::GuiController(fs::path directory, std::optional<BatchBackend> backend, EngineMode engine_mode)
+    : worker_([this, directory = std::move(directory), backend = std::move(backend), engine_mode](std::stop_token stop) mutable {
+        run(std::move(directory), std::move(backend), engine_mode, stop);
     }) {}
 GuiController::~GuiController() { close(); }
 GuiSnapshot GuiController::snapshot() const { std::lock_guard lock(mutex_); return state_; }
@@ -36,7 +36,8 @@ void GuiController::select_engine(fs::path directory) { (void)submit({Operation:
 void GuiController::cancel() { cancel_ = true; condition_.notify_one(); }
 void GuiController::close() { closing_ = true; worker_.request_stop(); condition_.notify_one(); }
 
-void GuiController::run(fs::path directory, std::optional<BatchBackend> backend, std::stop_token stop) {
+void GuiController::run(fs::path directory, std::optional<BatchBackend> backend, EngineMode engine_mode,
+                        std::stop_token stop) {
     SettingsStore store(directory);
     AppSettings settings;
     std::unique_ptr<BatchEngine> engine;
@@ -66,6 +67,8 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
         phase(GuiPhase::Initializing);
         try {
             auto processor = [&] {
+                if (engine_mode == EngineMode::Bundled)
+                    return std::make_shared<AudioProcessor>(bundled_engine(directory), stop);
                 const auto paths = discover_engine(directory, settings.engine_directory);
                 try { return std::make_shared<AudioProcessor>(paths, stop); }
                 catch (const AudioError&) {
@@ -87,7 +90,14 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                 });
             }
             phase(GuiPhase::Idle);
-        } catch (const AudioError& error) { notice(error.diagnostic()); phase(GuiPhase::EngineMissing); }
+        } catch (const AudioError& error) {
+            auto diagnostic = error.diagnostic();
+            if (engine_mode == EngineMode::Bundled) {
+                diagnostic = {"engine_bundle_missing", {}, message(diagnostic) + "\n" + diagnostic.technical_detail};
+            }
+            notice(std::move(diagnostic));
+            phase(GuiPhase::EngineMissing);
+        }
         publish();
     };
     try {
@@ -173,7 +183,8 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                     persist(); break;
                 case Operation::Engine:
                     if (engine) break;
-                    settings.engine_directory = item.paths.empty() ? fs::path{} : item.paths.front();
+                    if (engine_mode == EngineMode::Discover)
+                        settings.engine_directory = item.paths.empty() ? fs::path{} : item.paths.front();
                     initialize(); if (engine) persist(); break;
                 case Operation::Start: {
                     if (!engine) break;
