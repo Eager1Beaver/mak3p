@@ -8,7 +8,7 @@ audio_converter_warnings(core_validation_runner)
 set(validation_fixtures "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
 set(validation_artifacts "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
 add_test(NAME validation.fixtures COMMAND Python3::Interpreter
-    "${CMAKE_CURRENT_SOURCE_DIR}/generate_fixtures.py" "${AUDIO_TEST_FFMPEG}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/generate_fixtures.py" "${AUDIO_TEST_FIXTURE_FFMPEG}"
     "${AUDIO_TEST_FFPROBE}" "${validation_fixtures}"
     "${MAK3P_TEST_SAMPLE_DIR}")
 set_tests_properties(validation.fixtures PROPERTIES FIXTURES_SETUP validation_media TIMEOUT 120)
