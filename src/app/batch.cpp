@@ -52,6 +52,7 @@ struct BatchEngine::Impl {
         std::optional<Clock::time_point> started;
         std::optional<Clock::time_point> finished;
         bool awaiting_audio = false;
+        bool folder_mp3_excluded = false;
     };
     BatchBackend backend;
     fs::path directory;
@@ -65,7 +66,6 @@ struct BatchEngine::Impl {
     AppSettings settings;
     BatchPhase phase = BatchPhase::Idle;
     std::size_t workers = 0;
-    std::size_t excluded = 0;
     std::vector<Diagnostic> warnings;
     std::optional<fs::path> log_path;
     std::unique_ptr<RunLog> log;
@@ -78,9 +78,11 @@ struct BatchEngine::Impl {
         auto& row = rows.at(id);
         auto cached = std::move(row.source_inspection);
         const auto awaiting_audio = row.awaiting_audio;
+        const auto folder_mp3_excluded = row.folder_mp3_excluded;
         row = Row{};
         row.source_inspection = std::move(cached);
         row.awaiting_audio = awaiting_audio;
+        row.folder_mp3_excluded = folder_mp3_excluded;
     }
 
     void require_idle() const {
@@ -105,7 +107,8 @@ struct BatchEngine::Impl {
     std::vector<ConversionJob> log_inputs() const {
         std::vector<ConversionJob> inputs;
         for (const auto& job : queue.jobs()) {
-            if (rows.at(job.id()).awaiting_audio) continue;
+            const auto& row = rows.at(job.id());
+            if (row.awaiting_audio || row.folder_mp3_excluded) continue;
             if (!incremental || active.contains(job.id()) ||
                 job.state() != JobState::Completed) inputs.push_back(job);
         }
@@ -163,6 +166,10 @@ struct BatchEngine::Impl {
             auto& inspection = *row.inspection;
             row.diagnostic = inspection.diagnostic;
             row.warnings = inspection.warnings;
+            if (!cancelled) {
+                row.folder_mp3_excluded = row.diagnostic.key == "mp3_excluded" &&
+                    job.source().origin == ImportOrigin::FolderScan;
+            }
             if (cancelled) {
                 job.cancel(); row.diagnostic = {"cancelled", {}, {}};
             } else if (inspection.state == JobState::Ready) job.mark_ready();
@@ -172,9 +179,6 @@ struct BatchEngine::Impl {
                 job.skip_lower_bitrate(message(row.diagnostic));
             } else job.skip_unsupported(message(row.diagnostic));
             if (job.state() != JobState::Ready) { event = job; event_row = row; }
-            if (row.diagnostic.key == "mp3_excluded" && job.source().origin == ImportOrigin::FolderScan) {
-                (void)queue.remove(id); rows.erase(id); ++excluded;
-            }
         }
         if (event) emit(*event, event_row);
     }
@@ -366,7 +370,7 @@ struct BatchEngine::Impl {
                 (void)queue.remove(id);
                 rows.erase(id);
             }
-            counts.excluded = excluded;
+            counts.excluded = excluded_count();
             for (const auto& job : log_inputs()) count_job(counts, job);
         }
         for (const auto& [job, row] : unfinished) emit(job, row);
@@ -396,11 +400,18 @@ struct BatchEngine::Impl {
             queue.job(entry.id()).reset();
             reset_row(entry.id());
         }
-        warnings.clear(); log_path.reset(); if (!pending) excluded = 0; workers = 0;
+        warnings.clear(); log_path.reset(); workers = 0;
         stop = std::stop_source{};
         phase = BatchPhase::Inspecting;
         try { coordinator = std::jthread([this, convert] { run(convert); }); }
         catch (...) { phase = BatchPhase::Idle; throw; }
+    }
+
+    std::size_t excluded_count() const {
+        if (settings.audio.include_mp3_from_folders) return 0;
+        return static_cast<std::size_t>(std::count_if(rows.begin(), rows.end(), [](const auto& entry) {
+            return entry.second.folder_mp3_excluded;
+        }));
     }
 };
 
@@ -428,7 +439,9 @@ QueueAddResult BatchEngine::add(const fs::path& path, ImportOrigin origin) {
     }
     else if (result.origin_changed) {
         impl_->queue.job(result.id).reset(); impl_->reset_row(result.id);
-        auto& cached = impl_->rows.at(result.id).source_inspection;
+        auto& row = impl_->rows.at(result.id);
+        row.folder_mp3_excluded = false;
+        auto& cached = row.source_inspection;
         if (cached) {
             auto promoted = std::make_shared<SourceInspection>(*cached);
             promoted->source.origin = origin;
@@ -449,7 +462,7 @@ bool BatchEngine::remove(JobId id) {
 void BatchEngine::clear() {
     std::lock_guard lock(impl_->mutex);
     impl_->require_idle();
-    impl_->queue.clear(); impl_->rows.clear(); impl_->excluded = 0;
+    impl_->queue.clear(); impl_->rows.clear();
 }
 
 void BatchEngine::configure(AppSettings settings) {
@@ -471,6 +484,8 @@ void BatchEngine::configure(AppSettings settings) {
     for (const auto& entry : impl_->queue.jobs()) {
         if (!invalidate && entry.state() == JobState::Completed) continue;
         impl_->queue.job(entry.id()).reset(); impl_->reset_row(entry.id());
+        if (impl_->settings.audio.include_mp3_from_folders)
+            impl_->rows.at(entry.id()).folder_mp3_excluded = false;
     }
 }
 
@@ -496,11 +511,11 @@ BatchSnapshot BatchEngine::snapshot() const {
     BatchSnapshot result;
     result.phase = impl_->phase; result.workers = impl_->workers;
     result.warnings = impl_->warnings; result.log_path = impl_->log_path;
-    result.counts.excluded = impl_->excluded;
+    result.counts.excluded = impl_->excluded_count();
     const auto now = Clock::now();
     for (const auto& job : impl_->queue.jobs()) {
         const auto& row = impl_->rows.at(job.id());
-        if (row.awaiting_audio) continue;
+        if (row.awaiting_audio || row.folder_mp3_excluded) continue;
         count_job(result.counts, job);
         JobSnapshot item{job, row.diagnostic, row.warnings, std::nullopt, row.started.has_value(), 0, std::nullopt};
         if (row.inspection) {
