@@ -8,6 +8,11 @@
 #include <FL/Fl_Help_View.H>
 #include <FL/Fl_Native_File_Chooser.H>
 #include <FL/Fl_RGB_Image.H>
+#ifndef _WIN32
+#include <FL/Fl_ICO_Image.H>
+#include <FL/Fl_PNG_Image.H>
+#include "gui/icon_data.hpp"
+#endif
 #include <FL/fl_ask.H>
 #include <FL/filename.H>
 #include <algorithm>
@@ -51,20 +56,18 @@ void install_icon() {
         GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
     if (large || small) Fl_Window::default_icons(large, small);
 #else
-    static const auto pixels = [] {
-        std::array<unsigned char, 32 * 32 * 3> data{};
-        for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) {
-            const bool mark = (x >= 7 && x <= 10 && y >= 8 && y < 25) ||
-                (x >= 21 && x <= 24 && y >= 8 && y < 25) ||
-                (y >= 8 && y <= 11 && x >= 7 && x <= 24) ||
-                (y >= 14 && y <= 17 && x >= 14 && x <= 17);
-            const int offset = (y * 32 + x) * 3;
-            data[offset] = mark ? 255 : 44; data[offset + 1] = mark ? 255 : 100; data[offset + 2] = mark ? 255 : 170;
-        }
-        return data;
-    }();
-    static const Fl_RGB_Image icon(pixels.data(), 32, 32, 3);
-    Fl_Window::default_icon(&icon);
+    Fl_ICO_Image directory("Mak3P", -2, icon_data, sizeof(icon_data));
+    std::vector<std::unique_ptr<Fl_PNG_Image>> images;
+    std::vector<const Fl_RGB_Image*> icons;
+    for (int id = 0; id < directory.idcount(); ++id) {
+        const auto& entry = directory.icondirentry()[id];
+        // Decode each embedded PNG directly, without opening an icon file on disk.
+        auto image = std::make_unique<Fl_PNG_Image>("Mak3P", icon_data + entry.dwImageOffset, entry.dwBytesInRes);
+        if (image->fail()) continue;
+        icons.push_back(image.get());
+        images.push_back(std::move(image));
+    }
+    if (!icons.empty()) Fl_Window::default_icons(icons.data(), static_cast<int>(icons.size()));
 #endif
 }
 }
