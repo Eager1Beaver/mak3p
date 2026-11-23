@@ -12,9 +12,9 @@ def generate(name, arguments):
                     *arguments, str(root / name)], check=True)
 
 
-def tone(name, codec, rate=44100, channels=1, options=()):
+def tone(name, codec, rate=44100, channels=1, options=(), duration="0.6"):
     generate(name, ["-f", "lavfi", "-i", f"sine=frequency=997:sample_rate={rate}",
-                    "-t", "0.6", "-ac", str(channels), "-c:a", codec, *options])
+                    "-t", duration, "-ac", str(channels), "-c:a", codec, *options])
 
 
 tone("mono.wav", "pcm_s16le")
@@ -31,6 +31,8 @@ tone("tone.wma", "wmav2")
 tone("tone.ac3", "ac3", 48000, 6, ("-b:a", "384k"))
 tone("cbr.mp3", "libmp3lame", 44100, 2, ("-b:a", "256k"))
 tone("vbr.mp3", "libmp3lame", 44100, 2, ("-q:a", "2"))
+tone("short.mp3", "libmp3lame", 44100, 2, ("-b:a", "128k"), duration="0.05")
+generate("quiet.flac", ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "2", "-c:a", "flac"])
 generate("multiple.mka", ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
                          "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000",
                          "-t", "0.6", "-map", "0:a", "-map", "1:a", "-c:a", "flac"])
