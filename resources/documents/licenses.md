@@ -2,7 +2,7 @@
 
 # End-user license agreement for Mak3P
 
-**Revision date: November 19, 2026**
+**Revision date: November 23, 2026**
 
 **Copyright © 2026 Ilia Golub.**
 
@@ -75,7 +75,7 @@ Support is provided at the Author's discretion and is not guaranteed. When repor
 
 ## 9. Third-party components {#components}
 
-The notices below identify the principal application components and the external audio tools. Full license texts for the linked libraries are included locally and can be opened through the links in this section. The original text copies are in the `documents/licenses` folder.
+The notices below identify the principal application components and the external audio tools. Open the links in this section to read the library licenses. The Windows Full package also includes `LICENSES.txt` beside Mak3P.exe with the bundle's exact audio-tool notices and corresponding source details.
 
 ### FLTK 1.4.5
 
@@ -87,7 +87,7 @@ Mak3P is based in part on the work of the [FLTK project](https://www.fltk.org/).
 
 ### TagLib 2.3.1
 
-[TagLib](https://taglib.org/) provides audio metadata support. It is available under the GNU Lesser General Public License, version 2.1, or the Mozilla Public License, version 1.1, according to its source notices.
+[TagLib](https://taglib.org/) provides audio metadata support. The Windows Full package distributes TagLib under the GNU Lesser General Public License, version 2.1. The Mozilla Public License 1.1 applies as an alternative to files that offer it in their source notices.
 
 - [Full GNU LGPL 2.1 text](taglib-lgpl.html).
 - [Full Mozilla Public License 1.1 text](taglib-mpl.html).
@@ -110,7 +110,7 @@ TagLib uses [UTF8-CPP](https://github.com/nemtrif/utfcpp), available under the B
 
 Mak3P invokes [FFmpeg and ffprobe](https://ffmpeg.org/) as separate executables; it does not own those tools. Their licenses depend on the exact build and enabled components. FFmpeg is generally available under the GNU LGPL 2.1 or later; builds using GPL components are covered by the GNU GPL, and builds with nonfree components can have redistribution restrictions.
 
-Consult the license, configuration, component notices, and corresponding source information supplied with the exact tools you use. See the [FFmpeg licensing information](https://ffmpeg.org/legal.html). A reference to FFmpeg here does not grant permission to redistribute every FFmpeg build.
+The Windows Full package includes FFmpeg and ffprobe under GNU LGPL 2.1 or later. See the package's `LICENSES.txt` for the bundled build and corresponding source. For other builds, consult the licenses and source information for the exact tools you use. See the [FFmpeg licensing information](https://ffmpeg.org/legal.html).
 
 ### LAME / libmp3lame
 
