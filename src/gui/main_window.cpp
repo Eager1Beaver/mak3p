@@ -71,11 +71,12 @@ void install_icon() {
 #endif
 }
 }
-MainWindow::MainWindow(fs::path directory, std::optional<BatchBackend> backend)
+MainWindow::MainWindow(fs::path directory, std::optional<BatchBackend> backend, EngineMode engine_mode)
     : ConstrainedWindow(metrics::minimum_width,
                        metrics::minimum_height,
                        application_name),
-        directory_(std::move(directory)), controller_(directory_, std::move(backend)) {
+        directory_(std::move(directory)), engine_mode_(engine_mode),
+        controller_(directory_, std::move(backend), engine_mode_) {
     install_icon();
     color(colors::background);
     menu_ = new Fl_Menu_Button(0, 0, 1, 1, application_name);
@@ -110,7 +111,9 @@ MainWindow::MainWindow(fs::path directory, std::optional<BatchBackend> backend)
     summary_ = new Fl_Box(0, 0, 1, 1); summary_->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
     count_ = new Fl_Box(0, 0, 1, 1); count_->align(FL_ALIGN_RIGHT | FL_ALIGN_INSIDE);
     notice_ = new Fl_Box(0, 0, 1, 1); notice_->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE | FL_ALIGN_CLIP); notice_->labelcolor(fl_rgb_color(135, 75, 15));
-    engine_ = new Fl_Button(0, 0, 1, 1); engine_->copy_label(text("gui_engine_action").c_str()); engine_->hide();
+    engine_ = new Fl_Button(0, 0, 1, 1);
+    engine_->copy_label(text(engine_mode_ == EngineMode::Bundled ? "gui_bundle_action" : "gui_engine_action").c_str());
+    engine_->hide();
     engine_->callback([](Fl_Widget*, void* data) { static_cast<MainWindow*>(data)->choose_engine(); }, this);
     start_ = new Fl_Button(0, 0, 1, 1); start_->color(colors::accent); start_->labelcolor(FL_WHITE);
     start_->callback([](Fl_Widget*, void* data) { auto* window = static_cast<MainWindow*>(data);
@@ -192,6 +195,13 @@ void MainWindow::choose(bool folders) {
 void MainWindow::choose_engine() {
     try {
         if (snapshot_.phase != GuiPhase::EngineMissing) return;
+        if (engine_mode_ == EngineMode::Bundled) {
+            const int answer = fl_choice("%s", text("gui_exit").c_str(), text("gui_retry").c_str(),
+                                         nullptr, text("engine_bundle_missing").c_str());
+            if (answer == 0) request_close();
+            if (answer == 1) controller_.select_engine({});
+            return;
+        }
         const int answer = fl_choice("%s", text("gui_exit").c_str(), text("gui_choose_engine").c_str(), text("gui_retry").c_str(), text("engine_missing").c_str());
         if (answer == 0) { request_close(); return; }
         if (answer == 2) { controller_.select_engine({}); return; }
@@ -261,8 +271,14 @@ void MainWindow::refresh() {
     else if (snapshot_.batch.counts.excluded) notice = text("gui_excluded", {{"count", std::to_string(snapshot_.batch.counts.excluded)}});
     update_label(notice_, notice);
     std::string full_notice; for (const auto& item : snapshot_.notices) full_notice += message(item) + "\n" + item.technical_detail + "\n";
-    if (engine_tip_ != full_notice) { engine_tip_ = std::move(full_notice); notice_->copy_tooltip(engine_tip_.c_str()); }
-    if (snapshot_.phase == GuiPhase::EngineMissing) { engine_->show(); notice_->hide(); } else { engine_->hide(); notice_->show(); }
+    if (engine_tip_ != full_notice) {
+        engine_tip_ = std::move(full_notice);
+        notice_->copy_tooltip(engine_tip_.c_str());
+        engine_->copy_tooltip(engine_tip_.c_str());
+    }
+    if (snapshot_.phase == GuiPhase::EngineMissing) {
+        engine_->show(); notice_->hide();
+    } else { engine_->hide(); notice_->show(); }
     if (resize_pending_ && restored_ && !closing_ && std::chrono::steady_clock::now() - resized_ > std::chrono::milliseconds(metrics::resize_save_delay_ms)) {
         resize_pending_ = false; controller_.window_size(normal_size_.width, normal_size_.height);
     }
