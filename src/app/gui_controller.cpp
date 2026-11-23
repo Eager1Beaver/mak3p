@@ -70,7 +70,8 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                 }
             };
             auto work = backend ? *backend : batch_backend(processor());
-            engine = std::make_unique<BatchEngine>(std::move(work), directory);
+            engine = std::make_unique<BatchEngine>(std::move(work), directory, application_version,
+                                                   BatchInputPolicy::ConfirmUnexpectedExtensions);
             engine->configure(settings);
             {
                 std::lock_guard lock(mutex_);
