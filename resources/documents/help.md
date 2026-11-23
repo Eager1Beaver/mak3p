@@ -10,7 +10,7 @@ Convert local audio files to MP3 in five steps. Your source files remain unchang
 
 Click **Add files**, then **Select files…** for individual tracks or **Select folders…** for folders, including their subfolders. These commands are also available in the **Mak3P** menu. You can drag local files or folders onto the window.[^drop]
 
-Mak3P checks each file and shows its audio properties. Files are recognized by their contents, even when their extensions are unusual. Adding the same path again does not create a duplicate row.
+Mak3P checks each file and recognizes audio by its contents. A file with an unexpected extension appears after Mak3P finds usable audio in it. Files with familiar audio extensions appear with a skip reason if they cannot be used. Adding the same path again does not create a duplicate row.
 
 **Include MP3 from folders** controls whether folder imports include MP3 files. Individually selected or dropped MP3 files are eligible regardless of this option. If a folder's MP3 files were excluded, enable the option and add that folder again.
 
@@ -43,7 +43,7 @@ Click **Start conversion** when at least one file is **Ready**. Each active row 
 Hover over a row or status for its full path, audio properties, warnings, or the reason a file failed or was skipped.
 
 - **Completed:** the MP3 was successfully saved.
-- **Skipped:** no conversion was performed. For example, a verified CBR MP3 already matches its effective output bitrate and needs no channel change or the input is unsupported or unreadable.[^matching]
+- **Skipped:** no conversion was performed. For example, a verified CBR MP3 already matches the selected target and needs no channel change, or the input is unsupported or unreadable.[^matching]
 - **Failed:** conversion or saving the output did not succeed. Check the explanation and the optional log, correct the problem, then remove and add the file again to retry.
 - **Cancelled:** the file was not completed before cancellation. You can click **Start conversion** to retry unfinished files.
 
@@ -82,4 +82,4 @@ Use **Mak3P → Default window size** to restore the main window's default size.
 
 [^workers]: The manual choices are limited to the detected logical processor count and the application's worker limit. Auto also uses no more workers than there are files to convert. If processor detection fails, Auto uses up to two workers.
 
-[^matching]: Matching uses the effective bitrate after automatic adjustment, not just the target menu value. Force upsampling does not reconvert an already matching CBR MP3 unless a channel change is needed. Variable-bitrate MP3s are not treated as matching CBR files based only on their average rate.
+[^matching]: A verified CBR MP3 below the selected target remains eligible at its automatically adjusted rate. Force upsampling uses the selected target. Mak3P skips a verified CBR match only if its rate equals the selected target and its channels already match. Variable-bitrate MP3s remain eligible even when their average rate equals the target.
