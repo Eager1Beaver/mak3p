@@ -115,14 +115,18 @@ ImportResult discover_sources(const std::vector<fs::path>& paths, bool recursive
     return result;
 }
 
-EnginePaths discover_engine(const fs::path& directory, const fs::path& selected) {
+EnginePaths bundled_engine(const fs::path& directory) {
 #ifdef _WIN32
-    const char* ffmpeg = "ffmpeg.exe";
-    const char* ffprobe = "ffprobe.exe";
+    return {directory / "bin" / "ffmpeg.exe", directory / "bin" / "ffprobe.exe"};
 #else
-    const char* ffmpeg = "ffmpeg";
-    const char* ffprobe = "ffprobe";
+    return {directory / "bin" / "ffmpeg", directory / "bin" / "ffprobe"};
 #endif
+}
+
+EnginePaths discover_engine(const fs::path& directory, const fs::path& selected) {
+    const auto bundled = bundled_engine(directory);
+    const auto ffmpeg = bundled.ffmpeg.filename();
+    const auto ffprobe = bundled.ffprobe.filename();
     for (const auto& candidate : {directory, directory / "bin", selected}) {
         if (candidate.empty()) continue;
         std::error_code error;
