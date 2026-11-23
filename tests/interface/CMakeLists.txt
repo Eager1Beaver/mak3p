@@ -1,9 +1,10 @@
 add_executable(gui_controller_tests controller_tests.cpp)
 target_link_libraries(gui_controller_tests PRIVATE audio_converter_batch)
 audio_converter_warnings(gui_controller_tests)
-foreach(test_case settings imports engine_discovery engine_recovery formatting incremental history cancellation closing real_audio real_cancel media_visibility folder_mp3_toggle)
+foreach(test_case settings imports engine_discovery engine_recovery bundled_engine_recovery formatting
+        incremental history cancellation closing real_audio real_cancel media_visibility folder_mp3_toggle)
     add_test(NAME interface.${test_case} COMMAND gui_controller_tests ${test_case}
-        "${MAK3P_AUDIO_TEST_FIXTURES}" "${AUDIO_TEST_FFMPEG}" "${AUDIO_TEST_FFPROBE}")
+        "${MAK3P_AUDIO_TEST_FIXTURES}" "${AUDIO_TEST_FFMPEG}" "${AUDIO_TEST_FFPROBE}" "${AUDIO_TEST_FIXTURE_FFMPEG}")
     set_tests_properties(interface.${test_case} PROPERTIES TIMEOUT 45 LABELS interface)
 endforeach()
 set_tests_properties(interface.real_audio interface.media_visibility interface.folder_mp3_toggle PROPERTIES FIXTURES_REQUIRED audio_media)
