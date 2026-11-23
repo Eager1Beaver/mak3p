@@ -26,6 +26,7 @@ struct BatchBackend {
 [[nodiscard]] BatchBackend batch_backend(std::shared_ptr<const AudioProcessor> processor);
 
 enum class BatchPhase { Idle, Inspecting, Converting };
+enum class BatchInputPolicy { KeepAll, ConfirmUnexpectedExtensions };
 
 struct BatchCounts {
     std::size_t total = 0;
@@ -66,7 +67,8 @@ class BatchEngine {
 public:
     BatchEngine(BatchBackend backend, 
                 fs::path application_directory,
-                std::string version = application_version);
+                std::string version = application_version,
+                BatchInputPolicy input_policy = BatchInputPolicy::KeepAll);
     ~BatchEngine();
     BatchEngine(const BatchEngine&) = delete;
     BatchEngine& operator=(const BatchEngine&) = delete;
