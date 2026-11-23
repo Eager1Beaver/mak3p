@@ -127,6 +127,13 @@ if(AUDIO_CONVERTER_BUILD_GUI)
     audio_converter_warnings(audio_converter_gui)
     add_executable(Mak3P WIN32 src/main.cpp)
     target_link_libraries(Mak3P PRIVATE audio_converter_gui)
+    if(WIN32)
+        enable_language(RC)
+        target_sources(Mak3P PRIVATE src/gui/mak3p.rc)
+        target_include_directories(Mak3P PRIVATE "${PROJECT_SOURCE_DIR}/resources/icons")
+        set_source_files_properties(src/gui/mak3p.rc PROPERTIES
+            OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/resources/icons/mak3p.ico")
+    endif()
     include(cmake/Documents.cmake)
 
     audio_converter_warnings(Mak3P)
