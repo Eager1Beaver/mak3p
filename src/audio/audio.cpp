@@ -78,14 +78,21 @@ bool format_is_mp3(const MediaInfo& media) {
            ("," + media.format + ",").find(",mp3,") != std::string::npos;
 }
 
-ProcessRequest decode_request(const fs::path& executable, const fs::path& source, int stream) {
-    ProcessRequest request;
-    request.executable = executable;
-    request.arguments = {
+void add_media_input(std::vector<std::string>& arguments, const fs::path& source, bool raw_mp3) {
+    if (raw_mp3) arguments.insert(arguments.end(), {"-f", "mp3"});
+    arguments.insert(arguments.end(), {"-i", path_utf8(file_io_path(source))});
+}
+
+ProcessRequest decode_request(const fs::path& executable, const fs::path& source, int stream,
+                              bool raw_mp3 = false) {
+    ProcessRequest request{executable, {
         "-nostdin", "-hide_banner", "-v", "error", "-xerror", "-threads", "1",
-        "-protocol_whitelist", "file,pipe", "-i", path_utf8(file_io_path(source)),
+        "-protocol_whitelist", "file,pipe"
+    }};
+    add_media_input(request.arguments, source, raw_mp3);
+    request.arguments.insert(request.arguments.end(), {
         "-map", "0:" + std::to_string(stream), "-vn", "-sn", "-dn", "-f", "null", "-"
-    };
+    });
     return request;
 }
 
@@ -287,14 +294,16 @@ AudioProcessor::AudioProcessor(EnginePaths paths, std::stop_token stop) : paths_
 
 MediaInfo AudioProcessor::probe(const fs::path& source, 
                                 bool check_decoding,
-                                std::stop_token stop) const {
+                                std::stop_token stop,
+                                std::optional<Mp3Analysis> established_mp3) const {
     ProcessRequest request{paths_.ffprobe, {
         "-v", "error", "-protocol_whitelist", "file,pipe",
         "-show_entries",
         "stream=index,codec_type,codec_name,sample_rate,channels,channel_layout,duration,bit_rate:"
         "stream_tags:format=format_name,duration,bit_rate:format_tags",
-        "-of", "json", "-i", path_utf8(file_io_path(source))
+        "-of", "json"
     }, 30s};
+    add_media_input(request.arguments, source, established_mp3.has_value());
     request.output_limit = 16 * 1024 * 1024;
     const auto result = run_process(request, stop);
     checked(result, "unsupported");
@@ -327,7 +336,7 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
             if (audio.index < 0 || audio.codec.empty() || audio.codec == "unknown" ||
                 audio.sample_rate < 1 || audio.channels < 1) continue;
             if (check_decoding) {
-                auto decode = decode_request(paths_.ffmpeg, source, audio.index);
+                auto decode = decode_request(paths_.ffmpeg, source, audio.index, media.format == "mp3");
                 decode.arguments[decode.arguments.size() - 2] = "framehash";
                 const auto end = decode.arguments.end() - 3;
                 decode.arguments.insert(end, {"-frames:a", "2"});
@@ -353,8 +362,8 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
             media.duration_seconds = media.audio.duration_seconds ?
                 media.audio.duration_seconds : format_duration;
             if (format_is_mp3(media)) {
-                media.mp3 = scan_mp3(source, stop, check_decoding ?
-                                     Mp3Scan::BoundedInput : Mp3Scan::CompleteOutput);
+                media.mp3 = established_mp3 ? *established_mp3 :
+                    scan_mp3(source, stop, check_decoding ? Mp3Scan::BoundedInput : Mp3Scan::CompleteOutput);
                 if (media.mp3.duration_seconds) {
                     media.duration_seconds = media.mp3.duration_seconds;
                 } else {
@@ -366,6 +375,14 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
                 }
             }
             return media;
+        }
+        // The image demuxer can win automatic probing on a short, renamed MP3.
+        if (check_decoding && !established_mp3 &&
+            (media.format.starts_with("image2") || media.format.ends_with("_pipe"))) {
+            const auto mp3 = scan_mp3(source, stop, Mp3Scan::BoundedInput);
+            if (mp3.mode == Mp3BitrateMode::Cbr || mp3.mode == Mp3BitrateMode::Vbr) {
+                return probe(source, true, stop, mp3);
+            }
         }
         throw AudioError({"no_audio", {}, errors});
     } catch (const Json::exception& error) {
@@ -432,7 +449,7 @@ Inspection classify_source(const SourceInspection& source, const AudioSettings& 
         return inspection;
     }
     if (mp3 && inspection.media->mp3.mode == Mp3BitrateMode::Cbr &&
-        inspection.media->mp3.bitrate_kbps == inspection.output_bitrate_kbps &&
+        inspection.media->mp3.bitrate_kbps == settings.bitrate_kbps &&
         output_channels(audio.channels, settings.channel_mode) == audio.channels) {
         inspection.state = JobState::SameBitrateSkipped;
         inspection.diagnostic = {"same_bitrate", {}, {}};
@@ -489,15 +506,17 @@ ConversionResult AudioProcessor::convert(const Inspection& input,
                                 std::nullopt, 0us});
         ProcessRequest encode{paths_.ffmpeg, {
             "-nostdin", "-hide_banner", "-v", "error", "-xerror", "-threads", "1",
-            "-filter_threads", "1", "-protocol_whitelist", "file,pipe",
-            "-i", path_utf8(file_io_path(input.source.path)),
+            "-filter_threads", "1", "-protocol_whitelist", "file,pipe"
+        }};
+        add_media_input(encode.arguments, input.source.path, input.media->format == "mp3");
+        encode.arguments.insert(encode.arguments.end(), {
             "-map", "0:" + std::to_string(input.media->audio.index),
             "-vn", "-sn", "-dn", "-map_metadata", "-1", "-map_chapters", "-1",
             "-c:a", "libmp3lame", "-b:a", std::to_string(*bitrate) + "k",
             "-ac", std::to_string(channels), "-ar", std::to_string(rate), "-threads:a", "1",
             "-id3v2_version", "3", "-write_id3v1", "0", "-progress", "pipe:1", "-nostats",
             "-f", "mp3", "-y", path_utf8(file_io_path(output.temporary_path()))
-        }};
+        });
         encode.on_stdout = [&](std::string_view bytes) { reader.consume(bytes); };
         output.validate_temporary();
         const auto encoded = run_process(encode, stop);
