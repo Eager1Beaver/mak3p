@@ -119,7 +119,8 @@ private:
     std::string ffprobe_version_;
 
     [[nodiscard]] MediaInfo probe(const fs::path& source, bool check_decoding,
-                                  std::stop_token stop) const;
+                                  std::stop_token stop,
+                                  std::optional<Mp3Analysis> established_mp3 = std::nullopt) const;
 };
 
 } // namespace audio_converter
