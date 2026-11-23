@@ -1,0 +1,5 @@
+#pragma once
+
+namespace audio_converter::gui {
+inline constexpr unsigned char icon_data[] = {@MAK3P_ICON_BYTES@};
+} // namespace audio_converter::gui
