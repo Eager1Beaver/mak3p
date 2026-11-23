@@ -1,4 +1,5 @@
 #include "app/batch.hpp"
+#include "app/import.hpp"
 #include "app/run_log.hpp"
 
 #include <algorithm>
@@ -10,24 +11,19 @@ namespace audio_converter {
 namespace {
 using Clock = std::chrono::steady_clock;
 
-BatchCounts counts_for(std::span<const ConversionJob> jobs, std::size_t excluded) {
-    BatchCounts counts;
-    counts.total = jobs.size();
-    counts.excluded = excluded;
-    for (const auto& job : jobs) {
-        switch (job.state()) {
-        case JobState::Checking: ++counts.checking; break;
-        case JobState::Ready: ++counts.ready; break;
-        case JobState::Converting: ++counts.converting; break;
-        case JobState::Completed: ++counts.completed; break;
-        case JobState::SameBitrateSkipped:
-        case JobState::LowerBitrateSkipped:
-        case JobState::UnsupportedSkipped: ++counts.skipped; break;
-        case JobState::Failed: ++counts.failed; break;
-        case JobState::Cancelled: ++counts.cancelled; break;
-        }
+void count_job(BatchCounts& counts, const ConversionJob& job) {
+    ++counts.total;
+    switch (job.state()) {
+    case JobState::Checking: ++counts.checking; break;
+    case JobState::Ready: ++counts.ready; break;
+    case JobState::Converting: ++counts.converting; break;
+    case JobState::Completed: ++counts.completed; break;
+    case JobState::SameBitrateSkipped:
+    case JobState::LowerBitrateSkipped:
+    case JobState::UnsupportedSkipped: ++counts.skipped; break;
+    case JobState::Failed: ++counts.failed; break;
+    case JobState::Cancelled: ++counts.cancelled; break;
     }
-    return counts;
 }
 } // namespace
 
@@ -55,10 +51,12 @@ struct BatchEngine::Impl {
         std::vector<Diagnostic> warnings;
         std::optional<Clock::time_point> started;
         std::optional<Clock::time_point> finished;
+        bool awaiting_audio = false;
     };
     BatchBackend backend;
     fs::path directory;
     std::string version;
+    BatchInputPolicy input_policy = BatchInputPolicy::KeepAll;
     mutable std::mutex mutex;
     std::mutex lifecycle;
     std::mutex log_mutex;
@@ -79,8 +77,10 @@ struct BatchEngine::Impl {
     void reset_row(JobId id) {
         auto& row = rows.at(id);
         auto cached = std::move(row.source_inspection);
+        const auto awaiting_audio = row.awaiting_audio;
         row = Row{};
         row.source_inspection = std::move(cached);
+        row.awaiting_audio = awaiting_audio;
     }
 
     void require_idle() const {
@@ -105,6 +105,7 @@ struct BatchEngine::Impl {
     std::vector<ConversionJob> log_inputs() const {
         std::vector<ConversionJob> inputs;
         for (const auto& job : queue.jobs()) {
+            if (rows.at(job.id()).awaiting_audio) continue;
             if (!incremental || active.contains(job.id()) ||
                 job.state() != JobState::Completed) inputs.push_back(job);
         }
@@ -149,12 +150,20 @@ struct BatchEngine::Impl {
             std::lock_guard lock(mutex);
             auto& job = queue.job(id);
             auto& row = rows.at(id);
+            const bool cancelled = stop.stop_requested() || input.state == JobState::Cancelled;
+            if (row.awaiting_audio && (cancelled ||
+                (input.state == JobState::UnsupportedSkipped && !input.media))) {
+                (void)queue.remove(id);
+                rows.erase(id);
+                return;
+            }
+            row.awaiting_audio = false;
             if (cached && cached->state != JobState::Cancelled) row.source_inspection = std::move(cached);
             row.inspection = std::move(input);
             auto& inspection = *row.inspection;
             row.diagnostic = inspection.diagnostic;
             row.warnings = inspection.warnings;
-            if (stop.stop_requested() || inspection.state == JobState::Cancelled) {
+            if (cancelled) {
                 job.cancel(); row.diagnostic = {"cancelled", {}, {}};
             } else if (inspection.state == JobState::Ready) job.mark_ready();
             else if (inspection.state == JobState::SameBitrateSkipped) {
@@ -221,6 +230,11 @@ struct BatchEngine::Impl {
                                 std::lock_guard lock(mutex);
                                 auto& job = queue.job(id);
                                 auto& row = rows.at(id);
+                                if (row.awaiting_audio) {
+                                    (void)queue.remove(id);
+                                    rows.erase(id);
+                                    continue;
+                                }
                                 row.diagnostic = {"conversion_failed", {}, error.what()};
                                 if (job.state() == JobState::Checking) job.skip_unsupported(message(row.diagnostic));
                                 else if (job.state() == JobState::Ready) {
@@ -332,19 +346,28 @@ struct BatchEngine::Impl {
         BatchCounts counts;
         {
             std::lock_guard lock(mutex);
+            std::vector<JobId> unconfirmed;
             for (const auto& entry : queue.jobs()) {
                 auto& job = queue.job(entry.id());
                 if (active.contains(job.id()) && stop.stop_requested() && (job.state() == JobState::Checking ||
                     job.state() == JobState::Ready || job.state() == JobState::Converting)) {
-                    job.cancel();
                     auto& row = rows.at(job.id());
+                    if (row.awaiting_audio) {
+                        unconfirmed.push_back(job.id());
+                        continue;
+                    }
+                    job.cancel();
                     row.diagnostic = {"cancelled", {}, {}};
                     if (row.started) row.finished = Clock::now();
                     unfinished.emplace_back(job, row);
                 }
             }
-            const auto inputs = log_inputs();
-            counts = counts_for(inputs, excluded);
+            for (const auto id : unconfirmed) {
+                (void)queue.remove(id);
+                rows.erase(id);
+            }
+            counts.excluded = excluded;
+            for (const auto& job : log_inputs()) count_job(counts, job);
         }
         for (const auto& [job, row] : unfinished) emit(job, row);
         if (log) {
@@ -381,12 +404,14 @@ struct BatchEngine::Impl {
     }
 };
 
-BatchEngine::BatchEngine(BatchBackend backend, fs::path directory, std::string version)
+BatchEngine::BatchEngine(BatchBackend backend, fs::path directory, std::string version,
+                         BatchInputPolicy input_policy)
     : impl_(std::make_unique<Impl>()) {
     if (!backend.inspect || !backend.convert) throw std::invalid_argument("Both audio operations are required");
     impl_->backend = std::move(backend);
     impl_->directory = fs::absolute(directory).lexically_normal();
     impl_->version = std::move(version);
+    impl_->input_policy = input_policy;
 }
 
 BatchEngine::~BatchEngine() { cancel(); wait(); }
@@ -394,8 +419,13 @@ BatchEngine::~BatchEngine() { cancel(); wait(); }
 QueueAddResult BatchEngine::add(const fs::path& path, ImportOrigin origin) {
     std::lock_guard lock(impl_->mutex);
     impl_->require_idle();
+    const bool awaiting_audio = impl_->input_policy == BatchInputPolicy::ConfirmUnexpectedExtensions &&
+        !has_audio_file_extension(path);
     const auto result = impl_->queue.add(path, origin);
-    if (result.added) impl_->rows.emplace(result.id, Impl::Row{});
+    if (result.added) {
+        auto& row = impl_->rows.try_emplace(result.id).first->second;
+        row.awaiting_audio = awaiting_audio;
+    }
     else if (result.origin_changed) {
         impl_->queue.job(result.id).reset(); impl_->reset_row(result.id);
         auto& cached = impl_->rows.at(result.id).source_inspection;
@@ -466,10 +496,12 @@ BatchSnapshot BatchEngine::snapshot() const {
     BatchSnapshot result;
     result.phase = impl_->phase; result.workers = impl_->workers;
     result.warnings = impl_->warnings; result.log_path = impl_->log_path;
-    result.counts = counts_for(impl_->queue.jobs(), impl_->excluded);
+    result.counts.excluded = impl_->excluded;
     const auto now = Clock::now();
     for (const auto& job : impl_->queue.jobs()) {
         const auto& row = impl_->rows.at(job.id());
+        if (row.awaiting_audio) continue;
+        count_job(result.counts, job);
         JobSnapshot item{job, row.diagnostic, row.warnings, std::nullopt, row.started.has_value(), 0, std::nullopt};
         if (row.inspection) {
             item.media = row.inspection->media;
