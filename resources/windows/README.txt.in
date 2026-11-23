@@ -1,0 +1,25 @@
+Mak3P $version | Windows x64 Full
+=================================
+
+Mak3P is a free, portable app for converting local audio and video files to MP3. It works offline on Windows 11 x64 and includes FFmpeg and ffprobe. No installation is required.
+
+Get started
+-----------
+1. Choose Extract All in File Explorer and open the extracted Mak3P folder. Keep the bin and documents folders beside Mak3P.exe.
+2. Double-click Mak3P.exe. Choose Add files to select files or folders, or drag them onto the window.
+3. Choose a bitrate and Stereo, Mono, or Auto. The defaults are 320 kbps and Stereo. Under Output location, save beside each source or choose one writable folder for the entire batch.
+4. Click Start conversion. Hover over a row or status for details. Cancel conversion stops unfinished work and keeps completed MP3s.
+
+Mak3P supports FLAC, APE, WavPack, WAV, AIFF, AAC or ALAC in MP4/M4A, DSF, Ogg/Vorbis, Opus, WMA, AC-3, and MP3. It preserves supported tags and artwork. Hybrid WavPack conversion uses the .wv stream without applying .wvc correction files.
+
+Source files stay intact. Existing output names receive numbered suffixes. Lower-bitrate sources use a supported bitrate at or below the target unless you enable Force upsampling. An MP3 that already matches the target can be skipped. Include MP3 from folders controls folder imports.
+
+Help and licenses
+-----------------
+Open Mak3P > Help for the full guide. If bundled audio tools are unavailable, extract the entire ZIP again and keep both tools in bin.
+
+Enable Write log file for a report beside Mak3P.exe. Review filenames, paths, and other personal information before sharing logs.
+
+See LICENSES.txt for the Mak3P agreement and third-party notices. In the app, open Mak3P > About > License.
+
+Report issues at https://github.com/Eager1Beaver/mak3p.
