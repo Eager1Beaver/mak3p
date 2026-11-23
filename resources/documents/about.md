@@ -1,4 +1,4 @@
-**Mak3P** - a free audio-to-MP3 converter.
+**Mak3P** - a free audio-to-MP3 converter using FFmpeg and LAME.
 
 Created by Ilia Golub.
 
