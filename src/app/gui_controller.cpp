@@ -48,6 +48,13 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
         state_.notices.push_back(std::move(value));
     };
     auto persist = [&] { for (auto& warning : store.save(settings)) notice(std::move(warning)); };
+    auto clear_selection = [&] {
+        if (engine) engine->clear();
+        std::lock_guard lock(mutex_);
+        state_.has_run = false;
+        state_.run_ids.clear();
+        state_.last_run = {};
+    };
     auto publish = [&](std::optional<GuiPhase> next_phase = std::nullopt) {
         auto batch = engine ? engine->snapshot() : BatchSnapshot{};
         std::lock_guard lock(mutex_);
@@ -144,10 +151,11 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                     }
                     engine->inspect_pending_async(); phase(GuiPhase::Checking); break;
                 }
-                case Operation::Remove: if (engine) (void)engine->remove(item.id); break;
+                case Operation::Remove:
+                    if (engine && engine->remove(item.id) && engine->snapshot().jobs.empty()) clear_selection();
+                    break;
                 case Operation::Clear:
-                    if (engine) engine->clear();
-                    { std::lock_guard lock(mutex_); state_.has_run = false; state_.run_ids.clear(); }
+                    clear_selection();
                     break;
                 case Operation::Configure: {
                     validate_settings(item.settings);
@@ -167,15 +175,22 @@ void GuiController::run(fs::path directory, std::optional<BatchBackend> backend,
                     if (engine) break;
                     settings.engine_directory = item.paths.empty() ? fs::path{} : item.paths.front();
                     initialize(); if (engine) persist(); break;
-                case Operation::Start:
-                    if (!engine || (!engine->snapshot().counts.ready && !engine->snapshot().counts.cancelled)) break;
+                case Operation::Start: {
+                    if (!engine) break;
+                    const auto batch = engine->snapshot();
+                    if (!batch.counts.ready && !batch.counts.cancelled) break;
+                    engine->start_pending_async();
+                    converting = true;
                     {
                         std::lock_guard lock(mutex_); state_.run_ids.clear();
-                        for (const auto& row : engine->snapshot().jobs)
+                        for (const auto& row : batch.jobs)
                             if (row.job.state() == JobState::Ready || row.job.state() == JobState::Cancelled) state_.run_ids.push_back(row.job.id());
                         state_.has_run = true;
+                        state_.phase = GuiPhase::Running;
+                        state_.can_start = false;
                     }
-                    converting = true; engine->start_pending_async(); phase(GuiPhase::Running); break;
+                    break;
+                }
                 }
             } catch (const AudioError& error) { notice(error.diagnostic()); phase(engine ? GuiPhase::Idle : GuiPhase::EngineMissing); }
             catch (const std::exception& error) { notice({"gui_operation_failed", {}, error.what()}); phase(engine ? GuiPhase::Idle : GuiPhase::EngineMissing); }
