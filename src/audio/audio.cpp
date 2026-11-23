@@ -379,9 +379,12 @@ MediaInfo AudioProcessor::probe(const fs::path& source,
         // The image demuxer can win automatic probing on a short, renamed MP3.
         if (check_decoding && !established_mp3 &&
             (media.format.starts_with("image2") || media.format.ends_with("_pipe"))) {
-            const auto mp3 = scan_mp3(source, stop, Mp3Scan::BoundedInput);
-            if (mp3.mode == Mp3BitrateMode::Cbr || mp3.mode == Mp3BitrateMode::Vbr) {
-                return probe(source, true, stop, mp3);
+            TagLib::FileStream stream(file_io_path(source).c_str(), true);
+            if (TagLib::MPEG::File::isSupported(&stream)) {
+                const auto mp3 = scan_mp3(source, stop, Mp3Scan::BoundedInput);
+                if (mp3.mode == Mp3BitrateMode::Cbr || mp3.mode == Mp3BitrateMode::Vbr) {
+                    return probe(source, true, stop, mp3);
+                }
             }
         }
         throw AudioError({"no_audio", {}, errors});
