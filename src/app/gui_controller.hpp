@@ -8,6 +8,7 @@
 
 namespace audio_converter {
 enum class GuiPhase { Initializing, Idle, Importing, Checking, Running, Cancelling, EngineMissing, Closing, Closed };
+enum class EngineMode { Discover, Bundled };
 struct GuiSnapshot {
     GuiPhase phase = GuiPhase::Initializing;
     AppSettings settings;
@@ -22,7 +23,8 @@ struct GuiSnapshot {
 // Owns background application work. The presentation reads snapshots and submits commands.
 class GuiController {
 public:
-    explicit GuiController(fs::path directory, std::optional<BatchBackend> backend = std::nullopt);
+    explicit GuiController(fs::path directory, std::optional<BatchBackend> backend = std::nullopt,
+                           EngineMode engine_mode = EngineMode::Discover);
     ~GuiController();
     GuiController(const GuiController&) = delete;
     GuiController& operator=(const GuiController&) = delete;
@@ -52,6 +54,6 @@ private:
     std::atomic<bool> closing_{false};
     std::jthread worker_;
     bool submit(Command command, bool unrestricted = false);
-    void run(fs::path directory, std::optional<BatchBackend> backend, std::stop_token stop);
+    void run(fs::path directory, std::optional<BatchBackend> backend, EngineMode engine_mode, std::stop_token stop);
 };
 } // namespace audio_converter
