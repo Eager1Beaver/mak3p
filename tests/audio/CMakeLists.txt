@@ -1,5 +1,5 @@
 add_test(NAME audio.fixtures COMMAND Python3::Interpreter
-    "${CMAKE_CURRENT_SOURCE_DIR}/generate_fixtures.py" "${AUDIO_TEST_FFMPEG}" "${MAK3P_AUDIO_TEST_FIXTURES}")
+    "${CMAKE_CURRENT_SOURCE_DIR}/generate_fixtures.py" "${AUDIO_TEST_FIXTURE_FFMPEG}" "${MAK3P_AUDIO_TEST_FIXTURES}")
 set_tests_properties(audio.fixtures PROPERTIES FIXTURES_SETUP audio_media TIMEOUT 90)
 
 add_executable(audio_tests audio_tests.cpp)
