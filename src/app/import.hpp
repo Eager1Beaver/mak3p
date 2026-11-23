@@ -15,4 +15,5 @@ struct ImportResult {
                                           bool recursive, std::stop_token stop = {});
 [[nodiscard]] EnginePaths discover_engine(const fs::path& application_directory,
                                          const fs::path& selected_directory = {});
+[[nodiscard]] EnginePaths bundled_engine(const fs::path& application_directory);
 } // namespace audio_converter
