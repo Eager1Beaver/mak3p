@@ -14,7 +14,7 @@ find_file(MAK3P_UTFCPP_LICENSE NAMES copyright
 find_file(MAK3P_ZLIB_LICENSE NAMES copyright
     HINTS "${MAK3P_PACKAGE_SHARE}/zlib" REQUIRED NO_DEFAULT_PATH)
 
-set(MAK3P_DOCUMENT_NAMES help licenses changelog)
+set(MAK3P_DOCUMENT_NAMES about help licenses changelog)
 set(MAK3P_DOCUMENT_SOURCES)
 set(MAK3P_DOCUMENT_FILES)
 foreach(name IN LISTS MAK3P_DOCUMENT_NAMES)
