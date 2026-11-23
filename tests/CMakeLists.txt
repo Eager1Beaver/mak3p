@@ -11,6 +11,7 @@ if(TARGET audio_converter_audio)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
     find_program(AUDIO_TEST_FFMPEG ffmpeg REQUIRED)
     find_program(AUDIO_TEST_FFPROBE ffprobe REQUIRED)
+    set(AUDIO_TEST_FIXTURE_FFMPEG "${AUDIO_TEST_FFMPEG}" CACHE FILEPATH "FFmpeg used to generate test fixtures")
     set(MAK3P_AUDIO_TEST_FIXTURES "${CMAKE_CURRENT_BINARY_DIR}/audio/fixtures")
 
     add_subdirectory(process)
