@@ -10,7 +10,12 @@ int main(int argc, char** argv) {
         return 0;
     }
     Fl::scheme("gtk+");
-    audio_converter::gui::MainWindow window(audio_converter::executable_directory());
+#ifdef MAK3P_WINDOWS_FULL
+    constexpr auto engine_mode = audio_converter::EngineMode::Bundled;
+#else
+    constexpr auto engine_mode = audio_converter::EngineMode::Discover;
+#endif
+    audio_converter::gui::MainWindow window(audio_converter::executable_directory(), std::nullopt, engine_mode);
     window.show();
     return Fl::run();
 }
