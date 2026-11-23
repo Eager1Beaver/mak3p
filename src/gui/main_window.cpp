@@ -15,6 +15,15 @@
 #include <cctype>
 #include <sstream>
 
+#ifdef _WIN32
+#include "gui/windows_resources.h"
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace audio_converter::gui {
 namespace {
 constexpr int rates[] = {320, 256, 224, 192, 160, 128};
@@ -34,6 +43,14 @@ std::string escape_html(std::string_view input) {
     return output;
 }
 void install_icon() {
+#ifdef _WIN32
+    const auto module = GetModuleHandleW(nullptr);
+    const auto large = static_cast<HICON>(LoadImageW(module, MAKEINTRESOURCEW(IDI_MAK3P), IMAGE_ICON,
+        GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
+    const auto small = static_cast<HICON>(LoadImageW(module, MAKEINTRESOURCEW(IDI_MAK3P), IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
+    if (large || small) Fl_Window::default_icons(large, small);
+#else
     static const auto pixels = [] {
         std::array<unsigned char, 32 * 32 * 3> data{};
         for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) {
@@ -48,6 +65,7 @@ void install_icon() {
     }();
     static const Fl_RGB_Image icon(pixels.data(), 32, 32, 3);
     Fl_Window::default_icon(&icon);
+#endif
 }
 }
 MainWindow::MainWindow(fs::path directory, std::optional<BatchBackend> backend)
@@ -215,7 +233,7 @@ void MainWindow::refresh() {
     }
     if (snapshot_.phase == GuiPhase::Closed) { for (auto& window : dialogs_) window->hide(); hide(); return; }
     const bool idle = !closing_ && snapshot_.phase == GuiPhase::Idle;
-    enabled(add_, idle); enabled(clear_, idle && !snapshot_.batch.jobs.empty());
+    enabled(add_, idle); enabled(clear_, idle && (!snapshot_.batch.jobs.empty() || snapshot_.batch.counts.excluded));
     for (Fl_Widget* widget : std::array<Fl_Widget*, 7>{bitrate_, channels_, output_, workers_, include_, force_, log_}) enabled(widget, idle);
     enabled(start_, !closing_ && (snapshot_.can_start || snapshot_.phase == GuiPhase::Running));
     update_label(start_, text(closing_ ? "gui_closing" : snapshot_.phase == GuiPhase::Running ? "gui_cancel" : snapshot_.phase == GuiPhase::Cancelling ? "gui_cancelling" : "gui_start"));
@@ -281,13 +299,19 @@ void MainWindow::dialog(bool about) {
         const auto platform = "Linux";
 #endif
         const auto build = std::string(platform) + " · " + std::to_string(sizeof(void*) * 8) + "-bit";
-        const auto header_html = "<table width=100%><tr><td><h2>" + std::string(application_name) +
-            "</h2></td><td align=right>" + release_version + "<br>" +
-            build + "<br>" + escape_html(text("gui_release", {{"date", release_date}})) + "</td></tr></table>";
-        auto* header = new Fl_Help_View(metrics::margin, metrics::margin, view_width, header_height);
-        header->textfont(metrics::font_face); header->textsize(metrics::font_size);
-        header->textcolor(colors::text); header->color(colors::background);
-        header->value(header_html.c_str());
+        auto* name = new Fl_Box(metrics::margin, metrics::margin, view_width / 3, header_height, application_name);
+        name->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+        name->labelfont(FL_HELVETICA_BOLD);
+        name->labelsize(metrics::title_font_size);
+        name->labelcolor(colors::text);
+        const auto details = std::string(release_version) + "\n" + build + "\n" +
+            text("gui_release", {{"date", release_date}});
+        auto* build_info = new Fl_Box(metrics::margin + view_width / 3, metrics::margin,
+                                      view_width - view_width / 3, header_height);
+        build_info->copy_label(details.c_str());
+        build_info->align(FL_ALIGN_RIGHT | FL_ALIGN_INSIDE);
+        build_info->labelsize(metrics::font_size);
+        build_info->labelcolor(colors::text);
     }
     auto* body = new Fl_Help_View(metrics::margin, metrics::margin + header_height,
                                   view_width, height - 64 - header_height);
