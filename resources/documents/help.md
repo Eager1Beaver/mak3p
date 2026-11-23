@@ -57,7 +57,9 @@ Adding files, removing rows, and changing settings are unavailable while work is
 
 ## Audio tools and supported inputs
 
-Mak3P requires **FFmpeg** and **ffprobe**, with the **libmp3lame** encoder available in FFmpeg. It looks beside the application, in its `bin` folder, in a selected engine folder, and on the system's PATH. If the tools are unavailable, use **Choose FFmpeg folder…**, select their folder, and retry. Mak3P does not download tools automatically.
+Mak3P requires **FFmpeg** and **ffprobe**, with the **libmp3lame** encoder available in FFmpeg. The Windows Full edition uses the tools in the `bin` folder beside Mak3P.exe. If they are unavailable, extract the entire Full ZIP again and click **Retry**.
+
+Other editions look beside the application, in its `bin` folder, in a selected engine folder, and on the system's PATH. If the tools are unavailable, use **Choose FFmpeg folder…** to select their folder. Mak3P does not download tools automatically.
 
 Supported inputs include FLAC, APE, WavPack, WAV, AIFF, AAC/ALAC in MP4/M4A, DSF, AC-3, Ogg/Vorbis, Opus, WMA, and MP3 when the selected FFmpeg build can decode them. For files containing multiple audio streams, Mak3P uses the first usable audio stream; non-audio streams are omitted.
 
