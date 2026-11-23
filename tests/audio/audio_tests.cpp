@@ -123,11 +123,7 @@ void probe_image_fallback() {
     const auto renamed = engine.inspect({copy_fixture("cbr.mp3", tmp.path / "audio.jpg")});
     require(renamed.media && renamed.media->mp3.mode == Mp3BitrateMode::Cbr,
             "Renamed MP3 was not recognized");
-    const auto short_mp3 = tmp.path / "short-audio.jpg";
-    const auto generated = run_process({ffmpeg, {"-v", "error", "-f", "lavfi", "-i",
-        "sine=sample_rate=44100", "-t", "0.05", "-ac", "2", "-c:a", "libmp3lame",
-        "-b:a", "128k", "-f", "mp3", path_utf8(short_mp3)}, std::chrono::seconds(10)});
-    require(generated.exit_code == 0, generated.standard_error);
+    const auto short_mp3 = copy_fixture("short.mp3", tmp.path / "short-audio.jpg");
     const auto inspected = engine.inspect({short_mp3});
     require(inspected.media && inspected.media->mp3.mode == Mp3BitrateMode::Cbr,
             "Short MP3 with an image extension was not recognized");
