@@ -1,5 +1,6 @@
 #include "gui/input_picker.hpp"
 #include "gui/presentation.hpp"
+#include "app/import.hpp"
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -16,16 +17,19 @@
 #include <string_view>
 #include <system_error>
 #else
-#include "app/import.hpp"
 #include <FL/Fl_Native_File_Chooser.H>
 #endif
 
 #include <stdexcept>
 
 namespace audio_converter::gui {
+namespace {
+
+std::string input_file_filter() {
+    return text("gui_files_filter", {{"extensions", audio_file_glob()}});
+}
 
 #ifdef _WIN32
-namespace {
 
 struct ReleaseInterface {
     void operator()(IUnknown* interface_pointer) const noexcept { interface_pointer->Release(); }
@@ -59,7 +63,7 @@ std::wstring windows_pattern(std::wstring_view pattern) {
 }
 
 void set_file_filters(IFileOpenDialog& dialog) {
-    std::wistringstream input(wide_text(text("gui_files_filter")));
+    std::wistringstream input(wide_text(input_file_filter()));
     std::vector<std::pair<std::wstring, std::wstring>> filters;
     for (std::wstring line; std::getline(input, line);) {
         const auto tab = line.find(L'\t');
@@ -73,8 +77,8 @@ void set_file_filters(IFileOpenDialog& dialog) {
     check_dialog(dialog.SetFileTypeIndex(1));
 }
 
-} // namespace
 #endif
+} // namespace
 
 std::vector<fs::path> select_input_paths([[maybe_unused]] Fl_Window& owner, bool folders) {
     const auto title = text(folders ? "gui_select_folders" : "gui_select_files");
@@ -115,8 +119,7 @@ std::vector<fs::path> select_input_paths([[maybe_unused]] Fl_Window& owner, bool
     Fl_Native_File_Chooser picker(folders ? Fl_Native_File_Chooser::BROWSE_MULTI_DIRECTORY
                                          : Fl_Native_File_Chooser::BROWSE_MULTI_FILE);
     picker.title(title.c_str());
-    const auto filter = text("gui_files_filter");
-    if (!folders) picker.filter(filter.c_str());
+    if (!folders) picker.filter(input_file_filter().c_str());
     const int status = picker.show();
     if (status < 0) throw std::runtime_error(picker.errmsg());
     if (status > 0) return {};
