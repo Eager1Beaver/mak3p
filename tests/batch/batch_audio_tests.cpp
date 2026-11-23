@@ -14,9 +14,7 @@ fs::path fixtures, ffmpeg, ffprobe, cli, helper;
 
 fs::path low_flac(const fs::path& directory) {
     const auto path = directory / "quiet.flac";
-    const auto result = run_process({ffmpeg, {"-nostdin", "-v", "error", "-f", "lavfi", "-i",
-        "anullsrc=r=44100:cl=mono", "-t", "2", "-c:a", "flac", path_utf8(path)}});
-    require(result.exit_code == 0, result.standard_error);
+    fs::copy_file(fixtures / path.filename(), path);
     return path;
 }
 
