@@ -12,7 +12,7 @@ Click **Add files**, then **Select files…** for individual tracks or **Select 
 
 Mak3P checks each file and recognizes audio by its contents. A file with an unexpected extension appears after Mak3P finds usable audio in it. Files with familiar audio extensions appear with a skip reason if they cannot be used. Adding the same path again does not create a duplicate row.
 
-**Include MP3 from folders** controls whether folder imports include MP3 files. Individually selected or dropped MP3 files are eligible regardless of this option. If a folder's MP3 files were excluded, enable the option and add that folder again.
+**Include MP3 from folders** controls whether folder imports include MP3 files. Turn it on to show eligible MP3s from the current selection, or turn it off to hide them. Individually selected or dropped MP3 files are eligible regardless of this option.
 
 ### 2. Choose bitrate and channels
 
