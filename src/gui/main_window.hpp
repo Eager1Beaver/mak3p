@@ -11,7 +11,8 @@
 namespace audio_converter::gui {
 class MainWindow : public ConstrainedWindow {
 public:
-    explicit MainWindow(fs::path directory, std::optional<BatchBackend> backend = std::nullopt);
+    explicit MainWindow(fs::path directory, std::optional<BatchBackend> backend = std::nullopt,
+                        EngineMode engine_mode = EngineMode::Discover);
     ~MainWindow() override;
     void resize(int x, int y, int w, int h) override;
     int handle(int event) override;
@@ -20,6 +21,7 @@ public:
     [[nodiscard]] QueueView& queue_view() { return *queue_; }
 private:
     fs::path directory_;
+    EngineMode engine_mode_;
     GuiController controller_;
     GuiSnapshot snapshot_;
     Fl_Menu_Button *menu_, *add_;
