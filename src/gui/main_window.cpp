@@ -270,10 +270,8 @@ void MainWindow::dialog(bool about) {
     const int height = about ? metrics::about_height : metrics::help_height;
     auto window = std::make_unique<ConstrainedWindow>(width, height, nullptr, true);
     window->copy_label(text(about ? "gui_about" : "gui_help").c_str()); window->set_non_modal();
-    auto* body = new Fl_Help_View(metrics::margin, metrics::margin, width - 2 * metrics::margin, height - 64);
-    body->textfont(metrics::font_face); body->textsize(metrics::font_size);
-    body->textcolor(colors::text); body->color(colors::background);
-    std::string content;
+    const int view_width = width - 2 * metrics::margin;
+    const int header_height = about ? metrics::about_header_height : 0;
     if (about) {
 #ifdef _WIN32
         const auto platform = "Windows";
@@ -282,19 +280,27 @@ void MainWindow::dialog(bool about) {
 #else
         const auto platform = "Linux";
 #endif
-        content = "<table width=100%><tr><td><h2>" + std::string(application_name) +
+        const auto build = std::string(platform) + " · " + std::to_string(sizeof(void*) * 8) + "-bit";
+        const auto header_html = "<table width=100%><tr><td><h2>" + std::string(application_name) +
             "</h2></td><td align=right>" + release_version + "<br>" +
-            text("gui_build", {{"platform", platform}, {"bits", std::to_string(sizeof(void*) * 8)}}) + "<br>" + text("gui_release") +
-            "</td></tr></table><p>" + escape_html(text("gui_author")) + "</p><p>" + escape_html(text("gui_contacts")) + "</p>";
-    } else {
-        const auto path = (directory_ / "documents" / "help.html").generic_u8string();
-        if (body->load(reinterpret_cast<const char*>(path.c_str())) != 0)
-            body->value(("<p>" + escape_html(text("gui_document_failed")) + "</p>").c_str());
+            build + "<br>" + escape_html(text("gui_release", {{"date", release_date}})) + "</td></tr></table>";
+        auto* header = new Fl_Help_View(metrics::margin, metrics::margin, view_width, header_height);
+        header->textfont(metrics::font_face); header->textsize(metrics::font_size);
+        header->textcolor(colors::text); header->color(colors::background);
+        header->value(header_html.c_str());
+    }
+    auto* body = new Fl_Help_View(metrics::margin, metrics::margin + header_height,
+                                  view_width, height - 64 - header_height);
+    body->textfont(metrics::font_face); body->textsize(metrics::font_size);
+    body->textcolor(colors::text); body->color(colors::background);
+    const auto path = (directory_ / "documents" / (about ? "about.html" : "help.html")).generic_u8string();
+    if (body->load(reinterpret_cast<const char*>(path.c_str())) != 0)
+        body->value(("<p>" + escape_html(text("gui_document_failed")) + "</p>").c_str());
+    if (!about) {
         auto* copyright = new Fl_Box(12, height - 42, width - 128, 28);
-        copyright->copy_label(text("gui_copyright").c_str()); copyright->labelsize(metrics::small_font_size);
+        copyright->copy_label(application_copyright); copyright->labelsize(metrics::small_font_size);
         copyright->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
     }
-    if (about) body->value(content.c_str());
     if (about) {
         auto* changelog = new Fl_Button(12, height - 42, 112, 28); changelog->copy_label(text("gui_changelog").c_str());
         changelog->box(FL_FLAT_BOX); changelog->labelcolor(colors::accent);
