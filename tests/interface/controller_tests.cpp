@@ -12,6 +12,7 @@ using test::require;
 using test::TempDirectory;
 namespace {
 fs::path fixtures;
+fs::path fixture_ffmpeg;
 EnginePaths engines;
 
 BatchBackend engine_backend() {
@@ -121,6 +122,37 @@ void engine_recovery() {
     controller.close(); await(controller, [](const auto& value) { return value.phase == GuiPhase::Closed; });
     require(read_settings(tmp.path / "config.ini").settings.engine_directory == selected, "Chosen engine folder was not saved");
 }
+void bundled_engine_recovery() {
+    TempDirectory tmp;
+    const auto app = tmp.path / "Mak3P";
+    fs::create_directories(app);
+    const auto bundled = bundled_engine(app);
+    fs::copy_file(engines.ffmpeg, app / bundled.ffmpeg.filename());
+    fs::copy_file(engines.ffprobe, app / bundled.ffprobe.filename());
+    AppSettings settings;
+    settings.engine_directory = engines.ffmpeg.parent_path();
+    test::write(app / "config.ini", serialize_settings(settings));
+
+    GuiController controller(app, std::nullopt, EngineMode::Bundled);
+    auto result = await(controller, [](const auto& value) { return value.phase == GuiPhase::EngineMissing; });
+    require(!result.can_start && !result.notices.empty() && result.notices.back().key == "engine_bundle_missing",
+            "Full edition accepted external tools or failed to explain recovery");
+
+    fs::create_directory(bundled.ffmpeg.parent_path());
+    fs::copy_file(engines.ffmpeg, bundled.ffmpeg);
+    test::write(bundled.ffprobe, "invalid executable");
+    controller.select_engine(settings.engine_directory);
+    result = await(controller, [](const auto& value) {
+        return value.phase == GuiPhase::EngineMissing && value.notices.size() >= 2;
+    });
+    require(result.notices.back().key == "engine_bundle_missing", "Corrupt bundled tool lacked recovery instructions");
+
+    fs::copy_file(engines.ffprobe, bundled.ffprobe, fs::copy_options::overwrite_existing);
+    controller.select_engine({});
+    result = idle(controller, 0);
+    require(result.notices.empty(), "Restored bundle did not clear the audio-tool error");
+}
+
 void formatting() {
     JobSnapshot row{ConversionJob(8, {fs::path(u8"/tmp/音楽.flac"), ImportOrigin::SelectedFile}), {"no_audio", {}, "Unreadable fixture"}, {}, {}, false, 0, {}};
     row.job.skip_unsupported("No audio");
@@ -193,7 +225,7 @@ void closing() {
 void real_cancel() {
     TempDirectory tmp;
     const auto source = tmp.path / "long.flac";
-    const auto generated = run_process({engines.ffmpeg, {"-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=997:sample_rate=44100", "-t", "960", "-c:a", "flac", path_utf8(source)}, 15s});
+    const auto generated = run_process({fixture_ffmpeg, {"-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=997:sample_rate=44100", "-t", "960", "-c:a", "flac", path_utf8(source)}, 15s});
     require(generated.exit_code == 0, "Could not prepare real cancellation fixture");
     GuiController controller(tmp.path, engine_backend()); auto result = idle(controller, 0);
     auto settings = result.settings; settings.audio.force_upsampling = true;
@@ -310,10 +342,12 @@ void folder_mp3_toggle() {
 }
 }
 int main(int argc, char** argv) {
-    if (argc != 5) return 2;
+    if (argc != 6) return 2;
     fixtures = fs::absolute(argv[2]);
     engines = {argv[3], argv[4]};
-    return test::run(argc, argv, {{"settings", settings}, {"imports", imports}, {"engine_discovery", engine_discovery}, {"engine_recovery", engine_recovery}, {"formatting", formatting},
+    fixture_ffmpeg = argv[5];
+    return test::run(argc, argv, {{"settings", settings}, {"imports", imports}, {"engine_discovery", engine_discovery},
+        {"engine_recovery", engine_recovery}, {"bundled_engine_recovery", bundled_engine_recovery}, {"formatting", formatting},
         {"incremental", incremental}, {"history", history}, {"cancellation", cancellation}, {"closing", closing},
         {"real_audio", real_audio}, {"real_cancel", real_cancel}, {"media_visibility", media_visibility},
         {"folder_mp3_toggle", folder_mp3_toggle}});
