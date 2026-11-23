@@ -2,9 +2,37 @@
 #include "audio/process.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 
 namespace audio_converter {
+namespace {
+constexpr std::array audio_extensions{
+    "flac", "ape", "wv", "wav", "wave", "mp4", "m4a", "dsf", "ac3", "aif",
+    "aiff", "ogg", "opus", "wma", "mp3", "aac", "aifc", "amr", "au", "caf",
+    "m4b", "mka", "oga", "tta"
+};
+}
+
+bool has_audio_file_extension(const fs::path& path) {
+    auto extension = path_utf8(path.extension());
+    if (extension.empty()) return false;
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char byte) {
+        return static_cast<char>(std::tolower(byte));
+    });
+    return std::find(audio_extensions.begin(), audio_extensions.end(),
+                     std::string_view(extension).substr(1)) != audio_extensions.end();
+}
+
+std::string audio_file_glob() {
+    std::string pattern = "*.{";
+    for (const auto extension : audio_extensions) {
+        if (pattern.back() != '{') pattern += ',';
+        pattern += extension;
+    }
+    return pattern + '}';
+}
+
 fs::path path_from_utf8(std::string_view text) {
     if (text.empty() || text.find('\0') != text.npos) throw AudioError({"gui_bad_drop", {}, {}});
     return fs::path(std::u8string(reinterpret_cast<const char8_t*>(text.data()), text.size()));
