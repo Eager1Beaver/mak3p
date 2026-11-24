@@ -1,7 +1,7 @@
 Mak3P $version | Windows x64 Full
 =================================
 
-Mak3P is a free, portable app for converting local audio and video files to MP3. It works offline on Windows 11 x64 and includes FFmpeg and ffprobe. No installation is required.
+Mak3P is a free, portable app for converting local audio to MP3, including audio tracks in supported video files. It works offline on Windows 11 x64 and includes FFmpeg and ffprobe. No installation is required.
 
 Get started
 -----------
