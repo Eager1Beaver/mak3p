@@ -136,7 +136,8 @@ void probe_streams() {
     require(multiple.state == JobState::Ready && multiple.media->audio.index == 0 &&
             multiple.media->audio.sample_rate == 44100, "The first usable audio stream was not selected");
     require(video.state == JobState::Ready && video.media->audio.index == 1 &&
-            video.media->audio.codec == "aac", "Video was mistaken for audio");
+            video.media->audio.codec == "aac" && video.media->audio.sample_rate == 44100,
+            "The first audio stream in the video container was not selected");
 }
 
 void probe_stream_fallback() {
