@@ -4,4 +4,4 @@ Created by Ilia Golub.
 
 [Mak3P on GitHub](https://github.com/Eager1Beaver/mak3p)
 
-Email: [TO BE ADDED]
+Email: [TO BE UPDATED]
