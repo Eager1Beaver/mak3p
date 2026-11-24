@@ -38,7 +38,8 @@ generate("multiple.mka", ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=4
                          "-t", "0.6", "-map", "0:a", "-map", "1:a", "-c:a", "flac"])
 generate("video.mp4", ["-f", "lavfi", "-i", "color=c=black:s=16x16:r=10",
                       "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
-                      "-t", "0.6", "-map", "0:v", "-map", "1:a",
+                      "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000",
+                      "-t", "0.6", "-map", "0:v", "-map", "1:a", "-map", "2:a",
                       "-c:v", "mpeg4", "-threads:v", "1", "-c:a", "aac"])
 for name, codec in [("cover.png", "png"), ("cover.jpg", "mjpeg")]:
     generate(name, ["-f", "lavfi", "-i", "color=c=blue:s=16x16",
