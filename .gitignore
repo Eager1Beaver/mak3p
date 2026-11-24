@@ -58,4 +58,4 @@ Desktop.ini
 *.swp
 *.swo
 .DS_Store
-*.png
+resources/icons/*.png
