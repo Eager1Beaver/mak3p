@@ -75,7 +75,7 @@ Support is provided at the Author's discretion and is not guaranteed. When repor
 
 ## 9. Third-party components {#components}
 
-The notices below identify the principal application components and the external audio tools. Open the links in this section to read the library licenses. The Windows Full package also includes `LICENSES.txt` beside Mak3P.exe with the bundle's exact audio-tool notices and corresponding source details.
+The notices below identify the principal application components and the external audio tools. Open the links in this section to read the library licenses. The Windows Full package also includes `LICENSES.txt` beside Mak3P.exe with the bundled audio-tool version and license notices.
 
 ### FLTK 1.4.5
 
@@ -110,7 +110,7 @@ TagLib uses [UTF8-CPP](https://github.com/nemtrif/utfcpp), available under the B
 
 Mak3P invokes [FFmpeg and ffprobe](https://ffmpeg.org/) as separate executables; it does not own those tools. Their licenses depend on the exact build and enabled components. FFmpeg is generally available under the GNU LGPL 2.1 or later; builds using GPL components are covered by the GNU GPL, and builds with nonfree components can have redistribution restrictions.
 
-The Windows Full package includes FFmpeg and ffprobe under GNU LGPL 2.1 or later. See the package's `LICENSES.txt` for the bundled build and corresponding source. For other builds, consult the licenses and source information for the exact tools you use. See the [FFmpeg licensing information](https://ffmpeg.org/legal.html).
+The Windows Full package includes FFmpeg and ffprobe under GNU LGPL 2.1 or later. See the package's `LICENSES.txt` for the bundled build and license notices. For other builds, consult the licenses and source information for the exact tools you use. See the [FFmpeg licensing information](https://ffmpeg.org/legal.html).
 
 ### LAME / libmp3lame
 
