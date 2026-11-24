@@ -2,6 +2,17 @@
 
 Mak3P is a free, portable desktop app for converting local audio files and folders to MP3. It works offline and supports batch conversion, with progress and results shown for each file.
 
+## Downloads
+
+Download the Windows x64 Full ZIP from the [latest release](https://github.com/Eager1Beaver/mak3p/releases/latest). Extract it and run `Mak3P.exe`.
+
+## Screenshots
+
+<p>
+  <img src="resources/assets/main_window_ready.png" width="360" alt="Mak3P with audio files ready to convert">
+  <img src="resources/assets/main_window_conversion.png" width="360" alt="Mak3P showing conversion progress">
+</p>
+
 ## What it does
 
 - Converts formats such as FLAC, APE, WavPack, WAV, AIFF, M4A, Ogg/Vorbis, Opus, WMA, and MP3 when supported by the selected audio tools.
