@@ -10,7 +10,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     Fl::scheme("gtk+");
-#ifdef MAK3P_WINDOWS_FULL
+#if defined(MAK3P_WINDOWS_FULL) || defined(MAK3P_LINUX_FULL)
     constexpr auto engine_mode = audio_converter::EngineMode::Bundled;
 #else
     constexpr auto engine_mode = audio_converter::EngineMode::Discover;
