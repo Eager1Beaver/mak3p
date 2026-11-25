@@ -1,0 +1,37 @@
+Mak3P $version | Linux x86-64 Full
+================================
+
+Mak3P is a free, portable app for converting local audio to MP3, including audio tracks in supported video files. It works offline and this package includes FFmpeg and ffprobe.
+
+Requirements
+------------
+Ubuntu 24.04 LTS x86-64 is the supported build baseline. Other distributions require glibc 2.39 or later, libstdc++ with GLIBCXX_3.4.32, and the X11, Xft, Fontconfig, and libpng runtime libraries. A graphical session with X11 or XWayland is required. ARM and musl-based distributions are not supported by this archive.
+
+On Ubuntu 24.04, install missing desktop libraries with:
+  sudo apt install libx11-6 libxinerama1 libxfixes3 libxcursor1 libxrender1 libxft2 libfontconfig1 libpng16-16t64 libstdc++6
+
+Get started
+-----------
+1. Extract the archive to a writable Linux folder, keeping bin and documents beside Mak3P:
+     tar -xzf Mak3P-v$version-linux-x64-full.tar.gz
+2. Open a terminal in the extracted Mak3P folder and run:
+     ./Mak3P
+   Some file managers also allow double-clicking the executable. If executable permissions were lost while copying, run:
+     chmod +x Mak3P bin/ffmpeg bin/ffprobe
+3. Choose Add files to select files or folders, or drag them onto the window.
+4. Choose a bitrate and Stereo, Mono, or Auto. Defaults are 320 kbps and Stereo. Under Output location, save beside each source or choose one writable folder for the entire batch.
+5. Click Start conversion. Hover over a row or status for details. Cancel conversion stops unfinished work and keeps completed MP3s.
+
+Mak3P supports FLAC, APE, WavPack, WAV, AIFF, AAC or ALAC in MP4/M4A, DSF, Ogg/Vorbis, Opus, WMA, AC-3, and MP3. It preserves supported tags and artwork. Hybrid WavPack conversion uses the .wv stream without applying .wvc correction files.
+
+Source files stay intact. Existing output names receive numbered suffixes. Lower-bitrate sources use a supported bitrate at or below the target unless you enable Force upsampling. An MP3 that already matches the target can be skipped. Include MP3 from folders controls folder imports.
+
+Help and licenses
+-----------------
+Open Mak3P > Help for the full guide. Keep both audio tools in bin. If they cannot start, check the requirements above and extract the entire archive again, then choose Retry.
+
+Enable Write log file for a report beside the application. Review filenames, paths, and other personal information before sharing logs.
+
+See LICENSES.txt for the Mak3P agreement and third-party notices. In the app, open Mak3P > About > License.
+
+Report issues at https://github.com/Eager1Beaver/mak3p.
