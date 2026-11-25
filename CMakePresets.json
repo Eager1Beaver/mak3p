@@ -87,6 +87,22 @@
       "cacheVariables": {
         "MAK3P_WINDOWS_FULL": "ON"
       }
+    },
+    {
+      "name": "linux-full",
+      "displayName": "Linux / x64 Full portable package",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-full",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MAK3P_LINUX_FULL": "ON",
+        "CMAKE_SKIP_RPATH": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -95,7 +111,8 @@
     { "name": "wsl-debug", "configurePreset": "wsl-debug" },
     { "name": "wsl-release", "configurePreset": "wsl-release" },
     { "name": "windows-release", "configurePreset": "windows-release" },
-    { "name": "windows-full", "configurePreset": "windows-full" }
+    { "name": "windows-full", "configurePreset": "windows-full" },
+    { "name": "linux-full", "configurePreset": "linux-full" }
   ],
   "testPresets": [
     { "name": "audio-debug", "configurePreset": "audio-debug", "output": { "outputOnFailure": true } },
@@ -103,6 +120,7 @@
     { "name": "wsl-debug", "configurePreset": "wsl-debug", "output": { "outputOnFailure": true } },
     { "name": "wsl-release", "configurePreset": "wsl-release", "output": { "outputOnFailure": true } },
     { "name": "windows-release", "configurePreset": "windows-release", "output": { "outputOnFailure": true } },
-    { "name": "windows-full", "configurePreset": "windows-full", "output": { "outputOnFailure": true } }
+    { "name": "windows-full", "configurePreset": "windows-full", "output": { "outputOnFailure": true } },
+    { "name": "linux-full", "configurePreset": "linux-full", "output": { "outputOnFailure": true } }
   ]
 }
