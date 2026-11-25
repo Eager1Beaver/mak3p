@@ -16,7 +16,7 @@ Source files stay intact. Existing output names receive numbered suffixes. Lower
 
 Help and licenses
 -----------------
-Open Mak3P > Help for the full guide. If bundled audio tools are unavailable, extract the entire ZIP again and keep both tools in bin.
+Open Mak3P > Help for the full guide. Keep both audio tools in bin. If they cannot start, check the requirements above and extract the entire archive again, then choose Retry.
 
 Enable Write log file for a report beside Mak3P.exe. Review filenames, paths, and other personal information before sharing logs.
 
