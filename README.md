@@ -1,10 +1,20 @@
+<div align="center">
+
+<img src="resources/icons/src/512x512_v1.0.0.svg" width="64" alt="Mak3P icon">
+
 # Mak3P
+
+### Turn any audio into MP3 — lightly and quickly.
+
+</div>
+
+## Overview
 
 Mak3P is a free, portable desktop app for converting local audio files and folders to MP3. It works offline and supports batch conversion, with progress and results shown for each file.
 
 ## Downloads
 
-Download the Windows x64 Full ZIP from the [latest release](https://github.com/Eager1Beaver/mak3p/releases/latest). Extract it and run `Mak3P.exe`.
+Download the Windows x64 or Linux Full bundle from the [latest release](https://github.com/Eager1Beaver/mak3p/releases/latest). Extract it and run `Mak3P.exe` (or `Mak3p`, for Linux).
 
 ## Screenshots
 
