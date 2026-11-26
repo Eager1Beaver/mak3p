@@ -62,7 +62,7 @@ void QueueView::draw() {
         const int status_x = x() + left_width;
         if (row.warning || row.failed) {
             fl_color(row.failed ? colors::error : colors::warning);
-            fl_circle(status_x + 6, top + 19, 6); fl_draw("!", status_x + 4, top + 23);
+            fl_circle(status_x + 6, top + 19, 6); fl_draw("!", status_x + 6.5, top + 24.5);
         }
         fl_color(row.failed ? colors::error : fl_rgb_color(40, 57, 74));
         fl_draw(shortened(row.status, status_width - 47).c_str(), status_x + 17, top + 23);
